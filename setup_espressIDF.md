@@ -6,7 +6,7 @@ Follow Espressif Get Started Guide and choose installation through IDE (in this 
 
 Link to full guide: [Get Started ESP32 ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/)  
 
-![Image]()
+![Image](images\setup_espressIDF\Install_EspressIDF_1-1_choose_VSCodeExtension.png)
 
 Direct link to Installation through IDE: [VSCode Extension](https://github.com/espressif/vscode-esp-idf-extension/blob/master/docs/tutorial/install.md)  
 
