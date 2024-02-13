@@ -114,5 +114,5 @@ void loop() {
   }
 
   previousState = currentState;
-  delay(2000);
+  delay(100);
 }
