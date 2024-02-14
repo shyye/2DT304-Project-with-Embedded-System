@@ -506,3 +506,10 @@ FodyWeavers.xsd
 # Additional files built by Visual Studio
 
 # End of https://www.toptal.com/developers/gitignore/api/visualstudio,visualstudiocode,windows,c,c++
+
+
+# Ignore build files
+build/
+sdkconfig
+.vscode/
+.devcontainer/
