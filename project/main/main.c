@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/timers.h"
+#include "freertos/timers.h" // TODO: Check if this is needed
 #include "esp_timer.h"
 
 void vTask1(void *pvParameters)
