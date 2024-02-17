@@ -3,6 +3,9 @@
  *
  * Two tasks - FreeRTOS ESP IDF for esp32 by SIMS IOT DEVICES
  * https://www.youtube.com/watch?v=bEhZp4Adghc
+ * 
+ * Simple read/write pin example
+ * https://esp32tutorials.com/esp32-push-button-esp-idf-digital-input/
  *
  *
  */
@@ -45,35 +48,10 @@
 
 #include "driver/uart.h"
 
-// void vTask1(void *pvParameters)
-// {
-//     for (size_t i = 0; i < 5; i++)
-//     {
-//         printf("Task1 %d is running: %lld\n", i, esp_timer_get_time() / 1000);
-//         vTaskDelay(1000 / portTICK_PERIOD_MS);
-//     }
-//     vTaskDelete(NULL);
-// }
+// For button
+#include "driver/gpio.h"
 
-// void vTask2(void *pvParameters)
-// {
-//     for (size_t i = 0; i < 5; i++)
-//     {
-//         printf("Task2 %d is running: %lld\n", i, esp_timer_get_time() / 1000);
-//         vTaskDelay(1000 / portTICK_PERIOD_MS);
-//     }
-//     vTaskDelete(NULL);
-// }
-
-// void app_main(void)
-// {
-//     printf("\nTimer output in microseconds program initiation: %lld\n\n", esp_timer_get_time() / 1000);
-
-//     // Parameter #5 is the priority of the task
-//     xTaskCreate(vTask1, "Task 1", 2048, NULL, 1, NULL);
-//     xTaskCreate(vTask2, "Task 2", 2048, NULL, 1, NULL);
-// }
-
+// Pins and States
 #define BUTTON_PIN 10
 #define BUTTON_PRESSED 1
 #define BUTTON_NOT_PRESSED 0
@@ -96,7 +74,10 @@ struct_message data;
 esp_now_peer_info_t peerInfo;
 
 // *** SET ID HERE ***
+// *
 int id = 1;
+// *
+// *******************
 
 // Source: https://github.com/espressif/esp-now/blob/master/examples/get-started/main/app_main.c
 // TODO: Check provisioner vs. responder: https://github.com/espressif/esp-now/blob/master/examples/provisioning/main/app_main.c
@@ -104,7 +85,7 @@ int id = 1;
 static void app_wifi_init()
 {
     // TODO: Here or in app_main?
-    nvs_flash_init();   // Not in the example above but necessary to prevent errors
+    nvs_flash_init(); // Not in the example above but necessary to prevent errors
 
     esp_event_loop_create_default();
 
@@ -124,6 +105,32 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
     printf(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
 }
 
+// TODO: Change to vTaskFunction
+void sendData()
+{
+    data.id = id;
+
+    if (data.buttonValue == BUTTON_PRESSED)
+    {
+        strcpy(data.a, "Lifebuoy is here");     
+    }
+    else
+    {
+        strcpy(data.a, "Lifebuoy is gone!");
+    }
+
+    // Send message via ESP-NOW
+    esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *)&data, sizeof(data));
+
+    if (result == ESP_OK)
+    {
+        printf("Sending confirmed");
+    }
+    else
+    {
+        printf("Sending error");
+    }
+}
 
 /**
  * Read button value from GPIO (Seeed)
@@ -134,16 +141,26 @@ void vTaskReadButtonValue(void *pvParameters)
     for (;;)
     {
         // Read button from GPIO
-        int newButtonValue = 1; // TODO: Read from GPIO
+        int newButtonValue = gpio_get_level(BUTTON_PIN);
 
-        // Store in data.buttonValue
-        data.buttonValue = newButtonValue;
+        // Send data if button vanlue has changed
+        if (newButtonValue != data.buttonValue)
+        {
+            printf("\nButton value has changed\n");
+            // Store new value in data.buttonValue
+            data.buttonValue = newButtonValue;
 
-        printf("Task Check Button Value is running: %lld\n", esp_timer_get_time() / 1000);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+            // Send data to LoRa device
+            sendData();
+        }
+
+        // printf("Task Check Button Value is running: %lld\n", esp_timer_get_time() / 1000);
+        // vTaskDelay(1000 / portTICK_PERIOD_MS);
+        vTaskDelay(1); // 1 == 10 ms, to avoid watchdog timer to get triggered, TODO: Check if this is a good idea
     }
 }
 
+// TODO: Change sendData() function to vTask???
 void vTaskSendData(void *pvParameters)
 {
     for (;;)
@@ -155,26 +172,20 @@ void vTaskSendData(void *pvParameters)
     vTaskDelete(NULL);
 }
 
-
-
 void app_main()
 {
-    
-
-
     // Set up Serial Monitor
     // Serial.begin(115200);
     // TODO: Är detta uart config här: https://github.com/espressif/esp-now/blob/master/examples/get-started/main/app_main.c
 
-
     // Setup pin to button
     // pinMode(D10, INPUT);
-    // TODO:
+    gpio_set_direction(BUTTON_PIN, GPIO_MODE_INPUT);
+
 
     // Set ESP32 as a Wi-Fi Station
     // WiFi.mode(WIFI_STA);
     app_wifi_init();
-
 
     // Initilize ESP-NOW
     if (esp_now_init() != ESP_OK)
@@ -186,12 +197,10 @@ void app_main()
     // Register the send callback
     esp_now_register_send_cb(OnDataSent);
 
-
     // Register peer
     memcpy(peerInfo.peer_addr, broadcastAddress, 6);
     peerInfo.channel = 0;
     peerInfo.encrypt = false;
-
 
     // Add peer
     if (esp_now_add_peer(&peerInfo) != ESP_OK)
@@ -200,64 +209,7 @@ void app_main()
         return;
     }
 
-
-    // Setup initial state
-    // 1 = Lifebuoy is here / button is pressed
-    // 0 = Lifebuoy is gone! / button is not pressed
-    bool currentState = 1;
-    bool previousState = 0;
-    bool sendData = false;
-
-    while (1)
-    {
-        // Read button
-        // currentState = digitalRead(D10);
-        // TODO: Read button ESP-IDF
-
-        // Send data if button state has changed
-        if (currentState != previousState)
-        {
-            sendData = true;
-        }
-        else
-        {
-            sendData = false;
-        }
-
-        if (sendData)
-        {
-
-            if (currentState == 1)
-            {
-
-                // Format structured data
-                strcpy(data.a, "Lifebuoy is here");
-                data.id = id;
-                data.buttonValue = currentState;
-            }
-            else
-            {
-
-                // Format structured data
-                strcpy(data.a, "Lifebuoy is gone!");
-                data.id = id;
-                data.buttonValue = currentState;
-            }
-
-            // Send message via ESP-NOW
-            esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *)&data, sizeof(data));
-
-            if (result == ESP_OK)
-            {
-                printf("Sending confirmed");
-            }
-            else
-            {
-                printf("Sending error");
-            }
-        }
-
-        previousState = currentState;
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
+    // Create tasks
+    // Parameter #5 is the priority of the task
+    xTaskCreate(vTaskReadButtonValue, "Check Button Value", 2048, NULL, 1, NULL); 
 }
