@@ -93,6 +93,9 @@ struct_message_lora_button lora_button;
 // Queue handle
 QueueHandle_t dataQueue;
 
+// Notify task handle
+TaskHandle_t vTaskReceiveDataHandle;
+
 
 // *** SET ID HERE ***
 // *
@@ -103,7 +106,6 @@ int id = 00;
 // TODO: Should all functions have prototypes here?
 // ANd should no argument functions have void in their parameter?
 void sendDataToQueue(void *data); 
-void sendData(void);
 
 // Source: https://github.com/espressif/esp-now/blob/master/examples/get-started/main/app_main.c
 // TODO: Check provisioner vs. responder: https://github.com/espressif/esp-now/blob/master/examples/provisioning/main/app_main.c
@@ -128,16 +130,13 @@ static void app_wifi_init()
 // Callback function executed when data is received
 void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
 {
+    // Copy the incoming data to the data structure
     memcpy(&data, incomingData, sizeof(data));
-    printf("Bytes received: %d\n", len);
-    printf("Data received: %s\n", data.a);
-    printf("ID of the sender: %d\n", data.id);
-    printf("Button value: %d\n", data.buttonValue);
+    // printf("Bytes received: %d\n", len);
 
-    // TODO: Check this structure
-    printf("---> OnDataRecv, sending to queue\n");
-    // Send data to queue
-    sendDataToQueue(&data);
+    // Notify recieve task
+    xTaskNotifyGive(vTaskReceiveDataHandle); // TODO: Check if this is correct (vTaskReceiveDataHandle
+
 }
 
 void sendDataToQueue(void *data)
@@ -224,9 +223,17 @@ void vTaskReceiveData(void *pvParameters)
 {
     for (;;)
     {
-        // Receive data
-        printf("Task Receive Data is running: %lld\n", esp_timer_get_time() / 1000);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        // Wait for the notification
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        printf("Data received: %s\n", data.a);
+        printf("ID of the sender: %d\n", data.id);
+        printf("Button value: %d\n", data.buttonValue);
+
+        // TODO: Check this structure
+        printf("---> OnDataRecv, sending to queue\n");
+        // Send data to queue
+        sendDataToQueue(&data);
     }
 }
 
@@ -262,4 +269,5 @@ void app_main(void)
     // Parameter #5 is the priority of the task
     xTaskCreate(vTaskReadButtonValue, "Check Button Value", 2048, NULL, 1, NULL); 
     xTaskCreate(vTaskSendDataToDatabase, "Send Data To Database", 2048, NULL, 1, NULL);
+    xTaskCreate(vTaskReceiveData, "Receive Data", 2048, NULL, 1, &vTaskReceiveDataHandle); // TODO: Check if this is correct (vTaskReceiveDataHandle)
 }
