@@ -56,48 +56,54 @@
 
 #include "driver/uart.h"
 
+// For button
+#include "driver/gpio.h"
 
-void vTask1(void *pvParameters)
-{
-    for (size_t i = 0; i < 5; i++)
-    {
-        printf("Task1 %d is running: %lld\n", i, esp_timer_get_time() / 1000);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
-    vTaskDelete(NULL);
-}
+// Added for queue functionality
+#include "freertos/queue.h"  
 
-void vTask2(void *pvParameters)
-{
-    for (size_t i = 0; i < 5; i++)
-    {
-        printf("Task2 %d is running: %lld\n", i, esp_timer_get_time() / 1000);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
-    vTaskDelete(NULL);
-}
+// Pins and States
+#define BUTTON_PIN 25
+#define BUTTON_PRESSED 1
+#define BUTTON_NOT_PRESSED 0
 
-// void app_main(void)
-// {
-//     printf("\nTimer output in microseconds program initiation: %lld\n\n", esp_timer_get_time() / 1000);
 
-//     // Parameter #5 is the priority of the task
-//     xTaskCreate(vTask1, "Task 1", 2048, NULL, 1, NULL);
-//     xTaskCreate(vTask2, "Task 2", 2048, NULL, 1, NULL);
-// }
-
-// Define a data structure
-typedef struct struct_message
+// Define a data structure for recieved messages
+typedef struct struct_message_received
 {
     char a[32];
     int id;
     int buttonValue;
-} struct_message;
+} struct_message_received ;
 
-// Create a structured object
-struct_message data;
+struct_message_received data;
 
 
+// Define a data structure for checking own button (On the LoRa device )
+typedef struct struct_message_lora_button
+{
+    char a[32];
+    int id;
+    int buttonValue;
+} struct_message_lora_button ;
+
+struct_message_lora_button lora_button;
+
+
+// Queue handle
+QueueHandle_t dataQueue;
+
+
+// *** SET ID HERE ***
+// *
+int id = 00;
+// *
+// *******************
+
+// TODO: Should all functions have prototypes here?
+// ANd should no argument functions have void in their parameter?
+void sendDataToQueue(void *data); 
+void sendData(void);
 
 // Source: https://github.com/espressif/esp-now/blob/master/examples/get-started/main/app_main.c
 // TODO: Check provisioner vs. responder: https://github.com/espressif/esp-now/blob/master/examples/provisioning/main/app_main.c
@@ -127,8 +133,18 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
     printf("Data received: %s\n", data.a);
     printf("ID of the sender: %d\n", data.id);
     printf("Button value: %d\n", data.buttonValue);
+
+    // TODO: Check this structure
+    printf("---> OnDataRecv, sending to queue\n");
+    // Send data to queue
+    sendDataToQueue(&data);
 }
 
+void sendDataToQueue(void *data)
+{
+    // Send data to queue
+    xQueueSendToBack(dataQueue, &data, 0);
+}
 
 
 /**
@@ -140,13 +156,36 @@ void vTaskReadButtonValue(void *pvParameters)
     for (;;)
     {
         // Read button from GPIO
-        int newButtonValue = 1; // TODO: Read from GPIO
+        int newButtonValue = gpio_get_level(BUTTON_PIN);
 
-        // Store in data.buttonValue
-        data.buttonValue = newButtonValue;
+        // Send data if button vanlue has changed
+        if (newButtonValue != lora_button.buttonValue)
+        {
+            printf("\nButton value has changed LoRa\n");
+            // Store new value in data.buttonValue
+            lora_button.buttonValue = newButtonValue; //TODO: ID always same, dooesnät need to update
 
-        printf("Task Check Button Value is running: %lld\n", esp_timer_get_time() / 1000);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+            // Send data
+            printf("TEST fom own button\n");
+
+            lora_button.id = id;
+
+            if (lora_button.buttonValue == BUTTON_PRESSED)
+            {
+                strcpy(lora_button.a, "Lifebuoy is here");     
+            }
+            else
+            {
+                strcpy(lora_button.a, "Lifebuoy is gone!");
+            }
+
+            // Send message to queue
+            sendDataToQueue(&lora_button);
+        }
+
+        // printf("Task Check Button Value is running: %lld\n", esp_timer_get_time() / 1000);
+        // vTaskDelay(1000 / portTICK_PERIOD_MS);
+        vTaskDelay(1); // 1 == 10 ms, to avoid watchdog timer to get triggered, TODO: Check if this is a good idea
     }
 }
 
@@ -157,10 +196,21 @@ void vTaskSendDataToDatabase(void *pvParameters)
 {
     for (;;)
     {
-        if (data.buttonValue == 0)
+        // if (xQueueReceive(dataQueue, &data, 0) == pdTRUE)
+        // TODO: The above solution triggers watchdog timer
+        if (xQueueReceive(dataQueue, &data, portMAX_DELAY))
         {
-            // Send data to database
+            printf("---> Data is in queue\n");
+            printf("---> Should now send data to database\n");
         }
+
+        // TODO: Do you need to do this or should you create a new queue for the button on the LoRa device
+        // if (xQueueReceive(dataQueue, &lora_button, portMAX_DELAY))
+        // {
+        //     printf("---> Data is in queue for LoRa\n");
+        //     printf("---> Should now send data to database\n");
+        // }
+        
     }
     vTaskDelete(NULL);
 }
@@ -168,6 +218,7 @@ void vTaskSendDataToDatabase(void *pvParameters)
 /**
  * Callback function when data is received via bluetooth or WiFi from Seeed devices
  * Maybe this should just be an ordinary fumction and not a task
+ * TODO:
  */
 void vTaskReceiveData(void *pvParameters)
 {
@@ -181,12 +232,13 @@ void vTaskReceiveData(void *pvParameters)
 
 
 
-
-
 void app_main(void)
-{
-    
-    
+{    
+    // Create the queue
+    // TODO: SHould put the que size 10 as a global variable
+    dataQueue = xQueueCreate(10, sizeof(struct_message_received)); // TODO: Check if struct_message is standard or can be whatever we created aboive
+
+
     // Set up Serial Monitor
     // Serial.begin(115200);
     // TODO: Är detta uart config här: https://github.com/espressif/esp-now/blob/master/examples/get-started/main/app_main.c
@@ -206,11 +258,8 @@ void app_main(void)
     // Register callback function
     esp_now_register_recv_cb(OnDataRecv);
 
-
-
-    // TODO: behövs denna?
-    // for (;;)
-    // {
-    //     // Loop forever
-    // }
+    // Create tasks
+    // Parameter #5 is the priority of the task
+    xTaskCreate(vTaskReadButtonValue, "Check Button Value", 2048, NULL, 1, NULL); 
+    xTaskCreate(vTaskSendDataToDatabase, "Send Data To Database", 2048, NULL, 1, NULL);
 }
