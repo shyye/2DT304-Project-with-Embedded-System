@@ -76,6 +76,7 @@ esp_now_peer_info_t peerInfo;
 // *** SET ID HERE ***
 // *
 int id = 1;
+static const char* TAG = "MyModule";
 // *
 // *******************
 
@@ -90,13 +91,16 @@ static void app_wifi_init()
     esp_event_loop_create_default();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    
+    uint8_t proto = 0;
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    ESP_ERROR_CHECK(esp_wifi_start());
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
-    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
-    ESP_ERROR_CHECK(esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_LR));
-    ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE)); 
+    esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_LR);
+    printf("test");
+    esp_wifi_get_protocol(WIFI_IF_STA, &proto);
+    ESP_LOGI(TAG, "%d", proto);
 }
 
 // Alternative from Arduino:
