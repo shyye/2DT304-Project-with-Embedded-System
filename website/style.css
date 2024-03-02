@@ -24,11 +24,11 @@ main > section {
 #object-list {
     height: 400px; /* tmporary height TODO: */
     flex-grow: 1;
-    background-color: #d35757;
+    background-color: #343434;
 }
 
 /* Container for map, right side */
 #map {
     flex-grow: 3;
-    background-color: #794545;
+    background-color: #70da88;
 }
