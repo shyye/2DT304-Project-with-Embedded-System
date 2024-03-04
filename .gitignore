@@ -513,3 +513,6 @@ build/
 sdkconfig
 .vscode/
 .devcontainer/
+
+# Ignore database/website related files
+.env
