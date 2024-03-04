@@ -59,12 +59,24 @@
 // MAC Address of responder - edit as required
 uint8_t broadcastAddress[] = {0x78, 0x21, 0x84, 0x9E, 0xFE, 0xCC};
 
+// Define a data structure for recieved messages
+typedef struct struct_message_received
+{
+    char a[32];
+    int id;
+    int buttonValue;
+    int hopcount;
+} struct_message_received ;
+
+struct_message_received recdata;
+
 // Define a data structure
 typedef struct struct_message
 {
     char a[32];
     int id;
     int buttonValue;
+    int hopcount;
 } struct_message;
 
 // Create a structured object
@@ -72,6 +84,12 @@ struct_message data;
 
 // Peer info
 esp_now_peer_info_t peerInfo;
+
+// Queue handle
+QueueHandle_t dataQueue;
+
+// Notify task handle
+TaskHandle_t vTaskReceiveDataHandle;
 
 // *** SET ID HERE ***
 // *
@@ -98,7 +116,6 @@ static void app_wifi_init()
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE)); 
     esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_LR);
-    printf("test");
     esp_wifi_get_protocol(WIFI_IF_STA, &proto);
     ESP_LOGI(TAG, "%d", proto);
 }
@@ -110,10 +127,23 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
     printf(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
 }
 
+// Callback function executed when data is received
+void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
+{
+    // Copy the incoming data to the data structure
+    memcpy(&recdata, incomingData, sizeof(recdata));
+    // printf("Bytes received: %d\n", len);
+
+    // Notify recieve task
+    xTaskNotifyGive(vTaskReceiveDataHandle); // TODO: Check if this is correct (vTaskReceiveDataHandle
+
+}
+
 // TODO: Change to vTaskFunction
 void sendData()
 {
     data.id = id;
+    data.hopcount = 5;
 
     if (data.buttonValue == BUTTON_PRESSED)
     {
@@ -135,6 +165,12 @@ void sendData()
     {
         printf("Sending error");
     }
+}
+
+void sendDataToQueue(void *data)
+{
+    // Send data to queue
+    xQueueSendToBack(dataQueue, &data, 0);
 }
 
 /**
@@ -177,11 +213,32 @@ void vTaskSendData(void *pvParameters)
     vTaskDelete(NULL);
 }
 
+void vTaskReceiveData(void *pvParameters)
+{
+    for (;;)
+    {
+        // Wait for the notification
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        printf("Data received: %s\n", recdata.a);
+        printf("ID of the sender: %d\n", recdata.id);
+        printf("Button value: %d\n", recdata.buttonValue);
+        printf("Hops left: %d\n", recdata.hopcount);
+
+        // TODO: Check this structure
+        printf("---> OnDataRecv, sending to queue\n");
+        // Send data to queue
+        sendDataToQueue(&recdata);
+    }
+}
+
 void app_main()
 {
     // Set up Serial Monitor
     // Serial.begin(115200);
     // TODO: Är detta uart config här: https://github.com/espressif/esp-now/blob/master/examples/get-started/main/app_main.c
+
+    dataQueue = xQueueCreate(10, sizeof(struct_message_received)); // TODO: Check if struct_message is standard or can be whatever we created aboive
 
     // Setup pin to button
     // pinMode(D10, INPUT);
@@ -200,6 +257,7 @@ void app_main()
     }
 
     // Register the send callback
+    esp_now_register_recv_cb(OnDataRecv);
     esp_now_register_send_cb(OnDataSent);
 
     // Register peer
@@ -216,5 +274,6 @@ void app_main()
 
     // Create tasks
     // Parameter #5 is the priority of the task
-    xTaskCreate(vTaskReadButtonValue, "Check Button Value", 2048, NULL, 1, NULL); 
+    xTaskCreate(vTaskReadButtonValue, "Check Button Value", 2048, NULL, 1, NULL);
+    xTaskCreate(vTaskReceiveData, "Receive Data", 2048, NULL, 1, &vTaskReceiveDataHandle); // TODO: Check if this is correct (vTaskReceiveDataHandle) 
 }

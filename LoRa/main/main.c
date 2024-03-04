@@ -67,6 +67,8 @@
 #define BUTTON_PRESSED 1
 #define BUTTON_NOT_PRESSED 0
 
+// MAC Address of responder - edit as required
+uint8_t broadcastAddress[] = {0xa0, 0x76, 0x4e, 0x40, 0x37, 0xe0};
 
 // Define a data structure for recieved messages
 typedef struct struct_message_received
@@ -74,6 +76,7 @@ typedef struct struct_message_received
     char a[32];
     int id;
     int buttonValue;
+    int hopcount;
 } struct_message_received ;
 
 struct_message_received data;
@@ -89,6 +92,8 @@ typedef struct struct_message_lora_button
 
 struct_message_lora_button lora_button;
 
+// Peer info
+esp_now_peer_info_t peerInfo;
 
 // Queue handle
 QueueHandle_t dataQueue;
@@ -126,6 +131,12 @@ static void app_wifi_init()
     ESP_ERROR_CHECK(esp_wifi_start());
 }
 
+// Alternative from Arduino:
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
+{
+    printf("\r\nLast Packet Send Status:\t");
+    printf(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+}
 
 // Callback function executed when data is received
 void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
@@ -137,6 +148,34 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
     // Notify recieve task
     xTaskNotifyGive(vTaskReceiveDataHandle); // TODO: Check if this is correct (vTaskReceiveDataHandle
 
+}
+
+// TODO: Change to vTaskFunction
+void sendData()
+{
+    data.id = id;
+    data.hopcount = data.hopcount - 1;
+
+    if (data.buttonValue == BUTTON_PRESSED)
+    {
+        strcpy(data.a, "Lifebuoy is here");     
+    }
+    else
+    {
+        strcpy(data.a, "Lifebuoy is gone!");
+    }
+
+    // Send message via ESP-NOW
+    esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *)&data, sizeof(data));
+
+    if (result == ESP_OK)
+    {
+        printf("Sending confirmed");
+    }
+    else
+    {
+        printf("Sending error");
+    }
 }
 
 void sendDataToQueue(void *data)
@@ -229,10 +268,12 @@ void vTaskReceiveData(void *pvParameters)
         printf("Data received: %s\n", data.a);
         printf("ID of the sender: %d\n", data.id);
         printf("Button value: %d\n", data.buttonValue);
+        printf("Hops left: %d\n", data.hopcount);
 
         // TODO: Check this structure
         printf("---> OnDataRecv, sending to queue\n");
         // Send data to queue
+        sendData();
         sendDataToQueue(&data);
     }
 }
@@ -264,6 +305,19 @@ void app_main(void)
 
     // Register callback function
     esp_now_register_recv_cb(OnDataRecv);
+    esp_now_register_send_cb(OnDataSent);
+
+    // Register peer
+    memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+    peerInfo.channel = 0;
+    peerInfo.encrypt = false;
+
+    // Add peer
+    if (esp_now_add_peer(&peerInfo) != ESP_OK)
+    {
+        printf("Failed to add peer");
+        return;
+    }
 
     // Create tasks
     // Parameter #5 is the priority of the task
