@@ -1,0 +1,73 @@
+<main>
+    <section id="object-list">
+        <div>
+            <h2>SearchFilter Lifebuoy</h2>
+            <form action="/lifebuoys" method="GET">
+                <label for="search">Search</label>
+                <input type="text" name="search" id="search" value="<%= searchValue %>">
+                <button type="submit">Search</button>
+            </form>
+        </div>
+    </section>
+    <section id="map"></section>
+</main>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Object List
+        const section = document.getElementById('object-list')
+
+        // Setup Map
+        const KALMAR_latitude = 56.682439564675875;
+        const KALMAR_longitude = 16.343238456776742;
+        var map = L.map('map').setView([KALMAR_latitude, KALMAR_longitude], 13);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Setup Markers to Map, and Corresponding List Elements into Object List
+        const lifebuoys = JSON.parse('<%- JSON.stringify(lifebuoys) %>');
+        lifebuoys.forEach(lifebuoy => {
+
+            // Marker
+            var marker = L.marker([lifebuoy.latitude, lifebuoy.longitude]).addTo(map);
+            var markerContent = `
+            <h3>Lifebuoy# ${lifebuoy.deviceId}</h3>
+            <ul>
+                <li><strong>Device ID</strong>: ${lifebuoy.deviceId}</li>
+                <li><strong>Zone</strong>: ${lifebuoy.zone}</li>
+                <li><strong>Coordinates</strong>: ${lifebuoy.latitude}, ${lifebuoy.longitude}</li>
+                <li><strong>Expiration Date</strong>: ${lifebuoy.expirationDate}</li>
+                <li><strong>Status</strong>: ${lifebuoy.status}</li>`;
+            marker.bindPopup(markerContent);
+
+            // Corresponding Object List Element TODO: duplicate code, refactor
+            var article = document.createElement('article');
+            var h2 = document.createElement('h2');
+            var ul = document.createElement('ul');
+            h2.innerHTML = `Lifebuoy #${lifebuoy.deviceId}`;
+            ul.innerHTML = `
+                <li><strong>Device ID</strong>: ${lifebuoy.deviceId}</li>
+                <li><strong>Zone</strong>: ${lifebuoy.zone}</li>
+                <li><strong>Coordinates</strong>: ${lifebuoy.latitude}, ${lifebuoy.longitude}</li>
+                <li><strong>Expiration Date</strong>: ${lifebuoy.expirationDate}</li>
+                <li><strong>Status</strong>: ${lifebuoy.status}</li>
+            `;
+
+            if (lifebuoy.status == 0) {
+                article.classList.add('object-list-missing-lifebuoy');
+            }
+
+            // TODO:ChatGPT help with closure, is this OK or not?
+            article.addEventListener('click', (function (m) {
+                return function () {
+                    m.openPopup();
+                };
+            })(marker));
+
+            article.append(h2, ul);
+            section.append(article);
+        });
+    });
+</script>

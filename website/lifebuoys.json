@@ -1,0 +1,29 @@
+[
+    {
+        "deviceId": 1,
+        "zone": 1,
+        "latitude": "56.66169335147105",
+        "longitude": "16.356917926830636",
+        "manufactureDate": "2020-01-01",
+        "expirationDate": "2030-01-01",
+        "status": 1
+    },
+    {
+        "deviceId": 2,
+        "zone": 1,
+        "latitude": "56.65763304111825",
+        "longitude": "16.353182862938883",
+        "manufactureDate": "2021-01-01",
+        "expirationDate": "2026-01-01",
+        "status": 0
+    },
+    {
+        "deviceId": 3,
+        "zone": 2,
+        "latitude": "56.65090092527515",
+        "longitude": "16.33671868666296",
+        "manufactureDate": "2000-01-01",
+        "expirationDate": "2025-01-01",
+        "status": 1
+    }
+]
