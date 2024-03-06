@@ -56,10 +56,13 @@
 #define BUTTON_PRESSED 1
 #define BUTTON_NOT_PRESSED 0
 
+int id = 3;
+
 // MAC Address of responder - edit as required
 uint8_t broadcastAddress[] = {0x78, 0x21, 0x84, 0x9E, 0xFE, 0xCC};
 uint8_t broadcastAddress1[] = {0xa0, 0x76, 0x4e, 0x40, 0x37, 0xe0};
 uint8_t broadcastAddress2[] = {0xA0, 0x76, 0x4E, 0x45, 0x53, 0xAC};
+uint8_t broadcastAddress3[] = {0xA0, 0x76, 0x4E, 0x44, 0xC9, 0x78};
 
 // Define a data structure for recieved messages
 typedef struct struct_message_received
@@ -95,7 +98,6 @@ TaskHandle_t vTaskReceiveDataHandle;
 
 // *** SET ID HERE ***
 // *
-int id = 1;
 static const char* TAG = "MyModule";
 // *
 // *******************
@@ -145,8 +147,8 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
 void sendData(int id, int hopcount, int buttonValue)
 {
     data.id = id;
-    data.hopcount = hopcount - 1;
 
+    data.hopcount = hopcount - 1;
     if (buttonValue == BUTTON_PRESSED)
     {
         strcpy(data.a, "Lifebuoy is here");     
@@ -158,10 +160,10 @@ void sendData(int id, int hopcount, int buttonValue)
 
     // Send message via ESP-NOW
     esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *)&data, sizeof(data));
-    //esp_err_t result1 = esp_now_send(broadcastAddress1, (uint8_t *)&data, sizeof(data));
+    esp_err_t result1 = esp_now_send(broadcastAddress1, (uint8_t *)&data, sizeof(data));
     esp_err_t result2 = esp_now_send(broadcastAddress2, (uint8_t *)&data, sizeof(data));
-
-    if (result2 == ESP_OK)
+    esp_err_t result3 = esp_now_send(broadcastAddress3, (uint8_t *)&data, sizeof(data));
+    if (result1 == ESP_OK)
     {
         printf("Sending confirmed");
     }
@@ -196,7 +198,7 @@ void vTaskReadButtonValue(void *pvParameters)
             data.buttonValue = newButtonValue;
 
             // Send data to LoRa device
-            sendData(id, 5, data.buttonValue);
+            sendData(id, 3, data.buttonValue);
         }
 
         // printf("Task Check Button Value is running: %lld\n", esp_timer_get_time() / 1000);
@@ -224,7 +226,7 @@ void vTaskReceiveData(void *pvParameters)
         // Wait for the notification
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        printf("Data received: %s\n", recdata.a);
+        printf("\nData received: %s\n", recdata.a);
         printf("ID of the sender: %d\n", recdata.id);
         printf("Button value: %d\n", recdata.buttonValue);
         printf("Hops left: %d\n", recdata.hopcount);
@@ -291,6 +293,17 @@ void app_main()
     }
 
     memcpy(peerInfo.peer_addr, broadcastAddress2, 6);
+    peerInfo.channel = 0;
+    peerInfo.encrypt = false;
+
+    // Add peer
+    if (esp_now_add_peer(&peerInfo) != ESP_OK)
+    {
+        printf("Failed to add peer");
+        return;
+    }
+
+    memcpy(peerInfo.peer_addr, broadcastAddress3, 6);
     peerInfo.channel = 0;
     peerInfo.encrypt = false;
 
