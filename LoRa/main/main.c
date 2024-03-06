@@ -69,6 +69,7 @@
 
 // MAC Address of responder - edit as required
 uint8_t broadcastAddress[] = {0xa0, 0x76, 0x4e, 0x40, 0x37, 0xe0};
+uint8_t broadcastAddress1[] = {0xA0, 0x76, 0x4E, 0x45, 0x53, 0xAC};
 
 // Define a data structure for recieved messages
 typedef struct struct_message_received
@@ -167,6 +168,7 @@ void sendData()
 
     // Send message via ESP-NOW
     esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *)&data, sizeof(data));
+    esp_err_t result1 = esp_now_send(broadcastAddress1, (uint8_t *)&data, sizeof(data));
 
     if (result == ESP_OK)
     {
@@ -273,7 +275,7 @@ void vTaskReceiveData(void *pvParameters)
         // TODO: Check this structure
         printf("---> OnDataRecv, sending to queue\n");
         // Send data to queue
-        sendData();
+        //sendData();
         sendDataToQueue(&data);
     }
 }
@@ -310,6 +312,17 @@ void app_main(void)
     // Register peer
     memcpy(peerInfo.peer_addr, broadcastAddress, 6);
     peerInfo.channel = 0;
+    peerInfo.encrypt = false;
+
+    // Add peer
+    if (esp_now_add_peer(&peerInfo) != ESP_OK)
+    {
+        printf("Failed to add peer");
+        return;
+    }
+
+    memcpy(peerInfo.peer_addr, broadcastAddress1, 6);
+    peerInfo.channel = 1;
     peerInfo.encrypt = false;
 
     // Add peer

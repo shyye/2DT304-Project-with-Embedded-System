@@ -58,6 +58,8 @@
 
 // MAC Address of responder - edit as required
 uint8_t broadcastAddress[] = {0x78, 0x21, 0x84, 0x9E, 0xFE, 0xCC};
+uint8_t broadcastAddress1[] = {0xa0, 0x76, 0x4e, 0x40, 0x37, 0xe0};
+uint8_t broadcastAddress2[] = {0xA0, 0x76, 0x4E, 0x45, 0x53, 0xAC};
 
 // Define a data structure for recieved messages
 typedef struct struct_message_received
@@ -140,12 +142,12 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
 }
 
 // TODO: Change to vTaskFunction
-void sendData()
+void sendData(int id, int hopcount, int buttonValue)
 {
     data.id = id;
-    data.hopcount = 5;
+    data.hopcount = hopcount - 1;
 
-    if (data.buttonValue == BUTTON_PRESSED)
+    if (buttonValue == BUTTON_PRESSED)
     {
         strcpy(data.a, "Lifebuoy is here");     
     }
@@ -156,8 +158,10 @@ void sendData()
 
     // Send message via ESP-NOW
     esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *)&data, sizeof(data));
+    //esp_err_t result1 = esp_now_send(broadcastAddress1, (uint8_t *)&data, sizeof(data));
+    esp_err_t result2 = esp_now_send(broadcastAddress2, (uint8_t *)&data, sizeof(data));
 
-    if (result == ESP_OK)
+    if (result2 == ESP_OK)
     {
         printf("Sending confirmed");
     }
@@ -192,7 +196,7 @@ void vTaskReadButtonValue(void *pvParameters)
             data.buttonValue = newButtonValue;
 
             // Send data to LoRa device
-            sendData();
+            sendData(id, 5, data.buttonValue);
         }
 
         // printf("Task Check Button Value is running: %lld\n", esp_timer_get_time() / 1000);
@@ -228,6 +232,9 @@ void vTaskReceiveData(void *pvParameters)
         // TODO: Check this structure
         printf("---> OnDataRecv, sending to queue\n");
         // Send data to queue
+        if(recdata.hopcount > 0){
+            sendData(recdata.id, recdata.hopcount, recdata.buttonValue);
+        }
         sendDataToQueue(&recdata);
     }
 }
@@ -262,6 +269,28 @@ void app_main()
 
     // Register peer
     memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+    peerInfo.channel = 0;
+    peerInfo.encrypt = false;
+
+    // Add peer
+    if (esp_now_add_peer(&peerInfo) != ESP_OK)
+    {
+        printf("Failed to add peer");
+        return;
+    }
+
+    memcpy(peerInfo.peer_addr, broadcastAddress1, 6);
+    peerInfo.channel = 0;
+    peerInfo.encrypt = false;
+
+    // Add peer
+    if (esp_now_add_peer(&peerInfo) != ESP_OK)
+    {
+        printf("Failed to add peer");
+        return;
+    }
+
+    memcpy(peerInfo.peer_addr, broadcastAddress2, 6);
     peerInfo.channel = 0;
     peerInfo.encrypt = false;
 
