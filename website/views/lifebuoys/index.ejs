@@ -1,19 +1,37 @@
-<main>
-    <section id="object-list">
-        <div>
-            <h2>SearchFilter Lifebuoy</h2>
-            <form action="/lifebuoys" method="GET">
-                <label for="search">Search</label>
-                <input type="text" name="search" id="search" value="<%= searchValue %>">
-                <button type="submit">Search</button>
-            </form>
-        </div>
+<section id="monitor-wrapper">
+    <section id="title">
+        <h3>Kalmar Kommun</h3>
+        <h2 id="monitor-title">Lifebuoy Monitoring</h2>
     </section>
-    <section id="map"></section>
-</main>
 
-<script>
+    <section id="monitor-content"> 
+        <section id="map"></section>
+
+        <section id="object-list-wrapper">
+            <div id="object-list-filter">
+                <form action="/lifebuoys" method="GET">
+
+                    <label for="sortBy">Sort by</label>
+                    <select name="sortBy" id="sortBy">
+                        <option value="status">Status</option>
+                        <option value="deviceIdAndZone">By device Id and zone</option>    
+                    </select>
+
+                    <!-- TODO: Submit -->
+                    <!-- <button type="submit">Search</button> -->
+                </form>
+            </div>
+            <section id="object-list"></section>
+        </section>
+    </section>
+</section>
+
+<%- include('stats') %>
+
+
+<script>    
     document.addEventListener('DOMContentLoaded', function () {
+        
         // Object List
         const section = document.getElementById('object-list')
 
@@ -25,49 +43,66 @@
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
-
+        
         // Setup Markers to Map, and Corresponding List Elements into Object List
-        const lifebuoys = JSON.parse('<%- JSON.stringify(lifebuoys) %>');
-        lifebuoys.forEach(lifebuoy => {
+        <% lifebuoys.forEach(lifebuoy => { %>
 
             // Marker
-            var marker = L.marker([lifebuoy.latitude, lifebuoy.longitude]).addTo(map);
+            var marker = L.marker([<%= lifebuoy.latitude %>, <%= lifebuoy.longitude %>]).addTo(map)
             var markerContent = `
-            <h3>Lifebuoy# ${lifebuoy.deviceId}</h3>
+            <h3>Lifebuoy# <%= lifebuoy.deviceId %></h3>
             <ul>
-                <li><strong>Device ID</strong>: ${lifebuoy.deviceId}</li>
-                <li><strong>Zone</strong>: ${lifebuoy.zone}</li>
-                <li><strong>Coordinates</strong>: ${lifebuoy.latitude}, ${lifebuoy.longitude}</li>
-                <li><strong>Expiration Date</strong>: ${lifebuoy.expirationDate}</li>
-                <li><strong>Status</strong>: ${lifebuoy.status}</li>`;
-            marker.bindPopup(markerContent);
-
+                <li><strong>Device ID</strong>: <%= lifebuoy.deviceId %></li>
+                <li><strong>Zone</strong>: <%= lifebuoy.zone %></li>
+                <li><strong>Coordinates</strong>: <%= lifebuoy.latitude %>, <%= lifebuoy.longitude %></li>
+                <li><strong>Expiration Date</strong>: <%= lifebuoy.expirationDate %></li>
+                <li><strong>Status</strong>: <%= lifebuoy.status %></li>
+            </ul>
+            <div>
+                <a href="/lifebuoys/<%= lifebuoy.id %>">Show</a>
+                <a href="/lifebuoys/<%= lifebuoy.id %>/edit">Edit</a>
+                <form method="POST" action="/lifebuoys/<%= lifebuoy.id %>?_method=DELETE">
+                    <button type="submit">Delete</button>
+                </form>
+            </div>`
+            marker.bindPopup(markerContent)
+            
             // Corresponding Object List Element TODO: duplicate code, refactor
-            var article = document.createElement('article');
-            var h2 = document.createElement('h2');
-            var ul = document.createElement('ul');
-            h2.innerHTML = `Lifebuoy #${lifebuoy.deviceId}`;
+            var article = document.createElement('article')
+            var h2 = document.createElement('h2')
+            var ul = document.createElement('ul')
+            h2.innerHTML = `Lifebuoy #<%= lifebuoy.deviceId %>`
             ul.innerHTML = `
-                <li><strong>Device ID</strong>: ${lifebuoy.deviceId}</li>
-                <li><strong>Zone</strong>: ${lifebuoy.zone}</li>
-                <li><strong>Coordinates</strong>: ${lifebuoy.latitude}, ${lifebuoy.longitude}</li>
-                <li><strong>Expiration Date</strong>: ${lifebuoy.expirationDate}</li>
-                <li><strong>Status</strong>: ${lifebuoy.status}</li>
-            `;
-
-            if (lifebuoy.status == 0) {
-                article.classList.add('object-list-missing-lifebuoy');
-            }
-
+                <li><strong>Device ID</strong>: <%= lifebuoy.deviceId %></li>
+                <li><strong>Zone</strong>: <%= lifebuoy.zone %></li>
+                <li><strong>Coordinates</strong>: <%= lifebuoy.latitude %>, <%= lifebuoy.longitude %></li>
+                <li><strong>Expiration Date</strong>: <%= lifebuoy.expirationDate %></li>
+                <li><strong>Status</strong>: <%= lifebuoy.status %></li>
+            `
+            
+            <% if(lifebuoy.status == 0){ %>
+                article.classList.add('object-list-missing-lifebuoy')
+            <% } %>
+                              
             // TODO:ChatGPT help with closure, is this OK or not?
-            article.addEventListener('click', (function (m) {
-                return function () {
+            article.addEventListener('click', (function(m) {
+                return function() {
                     m.openPopup();
                 };
             })(marker));
 
-            article.append(h2, ul);
-            section.append(article);
-        });
-    });
+            article.append(h2,ul)
+            section.append(article)
+        <% }) %>
+    })
 </script>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io('http://localhost:3000');
+  socket.on('mqttMessage', (message) => {
+    // The server sent a message, so refresh the page TODO: Change this
+    location.reload();
+  });
+</script>
+
