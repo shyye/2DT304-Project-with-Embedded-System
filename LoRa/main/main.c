@@ -16,28 +16,19 @@
  * https://aliafshar.medium.com/esp-idf-for-arduino-users-tutorials-part-3-app-setup-and-loop-9086726627
  *
  *
- */
-
-/**
- * TODO:
- * - There is two different devices
- * - The devices are grouped into clusters with for example 10 Seeed devices and 1 LoRa device.
- * - Every cluster has one LoRa device
- * - The devices should be connected with BLE mesh or WiFi and ESP-NOW
- * - The LoRa device also have one button
- * - It will always check if the button is pressed or not
+ * TTN
+ * https://github.com/manuelbl/ttn-esp32 TODO: CHeck how to write this reference
+ * *******************************************************************************
+ * 
+ * ttn-esp32 - The Things Network device library for ESP-IDF / SX127x
+ * 
+ * Copyright (c) 2021 Manuel Bleichenbacher
+ * 
+ * Licensed under MIT License
+ * https://opensource.org/licenses/MIT
  *
- * - The Seeed devices are connected to one button.
- * - It will always check if the button is pressed or not
- * - If the button is pressed, then the Seeed device sends a message to the LoRa device telling the system
- * that the object (lifbuoy) have been taken from it's place.
- *
- * - As soon as the LoRa device receives the message, it will send a message via LoRa to a database
- * - The LoRa device should be able to recieve multiple messages from different Seeed devices at the same time and also from its' own button
- * - When a button is pressed down again, the LoRa device should recieve a notification and then send a message to the database to tell that the object is back in place
- *
- * - The LoRa device should also be able to send a message to the database one time everyday to tell that it is still alive and that all the Seeed devices are still connected
- */
+ * Sample program for C showing how to send and receive messages.
+ ******************************************************************************/
 
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
@@ -60,7 +51,10 @@
 #include "driver/gpio.h"
 
 // Added for queue functionality
-#include "freertos/queue.h"  
+#include "freertos/queue.h"
+
+// LORA TEST TODO:
+#include "ttn.h"
 
 // Pins and States
 #define BUTTON_PIN 25
@@ -108,6 +102,72 @@ TaskHandle_t vTaskReceiveDataHandle;
 int id = 00;
 // *
 // *******************
+
+
+
+
+
+
+// LORA TEST TODO:
+// Source: https://github.com/manuelbl/ttn-esp32/wiki/Get-Started
+
+// #include "ttn.h"
+
+// NOTE:
+// The LoRaWAN frequency and the radio chip must be configured by running 'idf.py menuconfig'.
+// Go to Components / The Things Network, select the appropriate values and save.
+
+// Copy the below hex strings from the TTN console (Applications > Your application > End devices
+// > Your device > Activation information)
+
+// Source: https://github.com/manuelbl/ttn-esp32/wiki/Get-Started
+// AppEUI (sometimes called JoinEUI)
+const char *appEui = "0000000000000000";
+// DevEUI
+const char *devEui = "70B3D57ED00658F3";
+// AppKey
+const char *appKey = "D676E7D701E4F46C65CA6AD453362466";
+
+// Pins and other resources
+#define TTN_SPI_HOST      HSPI_HOST
+#define TTN_SPI_DMA_CHAN  1
+#define TTN_PIN_SPI_SCLK  5
+#define TTN_PIN_SPI_MOSI  27
+#define TTN_PIN_SPI_MISO  19
+#define TTN_PIN_NSS       18
+#define TTN_PIN_RXTX      TTN_NOT_CONNECTED
+#define TTN_PIN_RST       14
+#define TTN_PIN_DIO0      26
+#define TTN_PIN_DIO1      33
+
+#define TX_INTERVAL 30     // Interval between transmissions (seconds) TODO: Maybe not used now
+static uint8_t msgData[] = "Hello, world";
+
+
+void sendMessages(uint8_t* msgData, size_t len)
+{
+    printf("Sending message...\n");
+    ttn_response_code_t res = ttn_transmit_message(msgData, sizeof(msgData) - 1, 1, false);
+    printf(res == TTN_SUCCESSFUL_TRANSMISSION ? "Message sent.\n" : "Transmission failed.\n");
+}
+
+void messageReceived(const uint8_t* message, size_t length, ttn_port_t port)
+{
+    printf("Message of %d bytes received on port %d:", length, port);
+    for (int i = 0; i < length; i++)
+        printf(" %02x", message[i]);
+    printf("\n");
+}
+// LORA TEST END TODO:
+
+
+
+
+
+
+
+
+
 
 // TODO: Should all functions have prototypes here?
 // ANd should no argument functions have void in their parameter?
@@ -242,14 +302,11 @@ void vTaskSendDataToDatabase(void *pvParameters)
         {
             printf("---> Data is in queue\n");
             printf("---> Should now send data to database\n");
-        }
 
-        // TODO: Do you need to do this or should you create a new queue for the button on the LoRa device
-        // if (xQueueReceive(dataQueue, &lora_button, portMAX_DELAY))
-        // {
-        //     printf("---> Data is in queue for LoRa\n");
-        //     printf("---> Should now send data to database\n");
-        // }
+            // Test message TODO: test this
+            uint8_t testMsg[] = {0x01, 0x02, 0x03};
+            sendMessages(testMsg, sizeof(testMsg));
+        }
         
     }
     vTaskDelete(NULL);
@@ -331,6 +388,98 @@ void app_main(void)
         printf("Failed to add peer");
         return;
     }
+
+
+
+
+
+
+    // LORA TEST TODO:
+
+     esp_err_t err;
+    // Initialize the GPIO ISR handler service
+    err = gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
+    ESP_ERROR_CHECK(err);
+    
+    // Initialize the NVS (non-volatile storage) for saving and restoring the keys
+    err = nvs_flash_init();
+    ESP_ERROR_CHECK(err);
+
+    // Initialize SPI bus
+    spi_bus_config_t spi_bus_config = {
+        .miso_io_num = TTN_PIN_SPI_MISO,
+        .mosi_io_num = TTN_PIN_SPI_MOSI,
+        .sclk_io_num = TTN_PIN_SPI_SCLK,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1
+    }; 
+    err = spi_bus_initialize(TTN_SPI_HOST, &spi_bus_config, TTN_SPI_DMA_CHAN);
+    ESP_ERROR_CHECK(err);
+
+    // Initialize TTN
+    ttn_init();
+
+    // Configure the SX127x pins
+    ttn_configure_pins(TTN_SPI_HOST, TTN_PIN_NSS, TTN_PIN_RXTX, TTN_PIN_RST, TTN_PIN_DIO0, TTN_PIN_DIO1);
+
+    // The below line can be commented after the first run as the data is saved in NVS
+    ttn_provision(devEui, appEui, appKey);
+
+    // Register callback for received messages
+    ttn_on_message(messageReceived);
+
+    // ttn_set_adr_enabled(false);
+    // ttn_set_data_rate(TTN_DR_US915_SF7);
+    // ttn_set_max_tx_pow(14);
+
+    printf("Joining...\n");
+    if (ttn_join())
+    {
+        printf("Joined.\n");
+        // xTaskCreate(sendMessages, "send_messages", 1024 * 4, (void* )0, 3, NULL);
+
+        // MESSAGE CODES
+        // Message type:
+        //    00 - Connection Check
+        //    01 - Lifebuoy Monitoring
+
+        // Message type, Zone, ID, Button value. (E.g. 01, 03, 01)
+        // Message type: 01
+        // Zone: 01 - 99
+        // ID: 01 - 99
+        // Button value:
+        //    00 - Missing
+        //    01 - In place
+
+        // Message type, Connection, Battery level
+        // Message type: 00
+        // Conncetion:
+        //    00 - No connection
+        //    01 - Connection
+        // Battery level: 00 - 99
+
+
+        // // Test message
+        // uint8_t testMsg[] = {0x01, 0x02, 0x03};
+        // sendMessages(testMsg, sizeof(testMsg));
+
+        // Test send message to queue
+    }
+    else
+    {
+        printf("Join failed. Goodbye\n");
+    }
+
+    // LORA TEST END TODO:
+
+
+
+
+
+
+
+
+
 
     // Create tasks
     // Parameter #5 is the priority of the task
