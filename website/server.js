@@ -19,12 +19,16 @@
 // TODO: If we want to avoid the lint errors in the ejs file, we should redo and use this to convert the sent data to a variable in tnside the script tags
 // const lifebuoys = JSON.parse('<%- JSON.stringify(lifebuoys) %>')
 
+// npm i methodOvverride: https://www.youtube.com/watch?v=UIf1Lh9OZ-k&list=PLZlA0Gpn_vH8jbFkBjOuFjhxANC63OmXM&index=9
+
 
 require('dotenv').config()
 const express = require('express')
 const expressLayouts = require('express-ejs-layouts')
 const mainRouter = require('./routes/main')
 const lifebuoyRouter = require('./routes/lifebuoys')
+const methodOverride = require('method-override')
+
 
 // Mongoose and Models
 const mongoose = require('mongoose')
@@ -35,18 +39,23 @@ const PORT = 3000
 const app = express();
 
 
-// Template engine & Layout
+// ChatGPT help and da internet(https://medium.com/kocfinanstech/socket-io-with-node-js-express-5cc75aa67cae) TODO: Look up
+const server = require('http').createServer(app);
+const io = require('socket.io')(server);
+// server.listen(3000, () => {
+//     console.log('Server is listening on port 3000');
+//   });
+
+
+// Template engine & Layout & Middleware
 app.set('view engine', 'ejs')
 app.set('views', __dirname + '/views') // TODO: Why dirname here and not for layouts?
 app.set('layout', 'layouts/layout')
 app.use(expressLayouts)
 app.use(express.static(__dirname + '/public'))  // CSS, JS, images etc.
 app.use(express.urlencoded({ extended: false })) //TODO: see if it's necessary to have extended to false
+app.use(methodOverride('_method'))  // _method is the variable used where this will be used
 
-
-
-
-// Middleware
 app.use(express.json())
 
 
@@ -61,7 +70,11 @@ mongoose.connect(process.env.DATABASE_URI)
     .then(() => {
         console.log('Connected to database');
 
-        app.listen(PORT, () => {
+        // app.listen(PORT, () => {
+        //     console.log('API running on port 3000');
+        // })
+
+        server.listen(PORT, () => {
             console.log('API running on port 3000');
         })
 
@@ -69,25 +82,9 @@ mongoose.connect(process.env.DATABASE_URI)
         console.log('Error connecting to database', err);
     })
 
-
+ 
 // MQTT
 const mqtt = require('mqtt')
-// const client = mqtt.connect("mqtt://test.mosquitto.org");
-
-// client.on("connect", () => {
-//   client.subscribe("presence", (err) => {
-//     if (!err) {
-//       client.publish("presence", "Hello mqtt");
-//     }
-//   });
-// });
-
-// client.on("message", (topic, message) => {
-//   // message is Buffer
-//   console.log(message.toString());
-//   client.end();
-// });
-
 
 // Replace these with your TTN MQTT details
 // TODO: test TSL How to use secure connection
@@ -117,25 +114,44 @@ client.on('connect', () => {
 
 client.on('message', (topic, message) => {
     // Handle incoming messages here
-    console.log(`Received message on topic ${topic}: ${message.toString()}`);
+    // console.log(`Received message on topic ${topic}: ${message.toString()}`);
 
-    const payload = message.toString();
-    const jsonData = JSON.parse(payload);
-    console.log('Received JSON data:', jsonData);
+    // const payload = message.toString();
+    // const jsonData = JSON.parse(payload);
+    // console.log('Received JSON data:', jsonData);
 
-    // Extract payload from the JSON data
-    const base64Payload = jsonData.uplink_message.frm_payload;
+    // // Extract payload from the JSON data
+    // const base64Payload = jsonData.uplink_message.frm_payload;
 
-    // Decode base64 payload
-    const decodedBuffer = Buffer.from(base64Payload, 'base64');
+    // // Decode base64 payload
+    // const decodedBuffer = Buffer.from(base64Payload, 'base64');
 
-    // Convert buffer to string or handle it according to your data format
-    const decodedString = decodedBuffer.toString('utf-8');
+    // // Convert buffer to string or handle it according to your data format
+    // const decodedString = decodedBuffer.toString('utf-8');
 
-    console.log(decodedString); // Output: "\x02" (String representation of the hexadecimal value '02')
-    updateLifebuoy(decodedString);
+    // console.log(decodedString); // Output: "\x02" (String representation of the hexadecimal value '02')
+
+
+
+    // Decode the payload
+    const deviceId = 55
+    const zone = 55
+    const newStatus = 1
+    let data = {
+        deviceId: deviceId,
+        zone: zone
+    };
+
+    updateLifebuoy(data, newStatus);
     
-    // webhook.emit('data', decodedString);
+    // webhook.emit('data', decodedString); TODO: Check this
+    // Emit an event when done
+    // lifebuoyEventEmitter.emit('messageReceived', "test");
+    // ChatGPT help TODO: Look up
+    // Emit an event to all connected Socket.IO clients
+    io.emit('mqttMessage', message);
+    console.log('Emitting message to all connected clients:', message);
+    
     
 });
 
@@ -156,14 +172,18 @@ function decodePayload(payload) {
     return payload;
 }
 
-function updateLifebuoy(params) {
-    Lifebuoy.findOneAndUpdate({ _id: params.id }, params, { new: true }, (err, lifebuoy) => {
-        if (err) {
-            console.log('Error updating lifebuoy:', err);
+async function updateLifebuoy(lifebuoyQuery, status) {
+
+    // Get Lifebuoy from database
+    try {
+        let lifebuoy = await Lifebuoy.findOne(lifebuoyQuery);
+        if (lifebuoy) {
+            lifebuoy.status = status;
+            await lifebuoy.save();
         } else {
-            console.log('Updated lifebuoy:', lifebuoy);
+            console.error('No lifebuoy found with the given filters:', lifebuoyQuery);
         }
-    });
+    } catch (error) {
+        console.error('Error occurred while updating Lifebuoy:', error);
+    }
 }
-
-
