@@ -112,48 +112,35 @@ client.on('connect', () => {
     });
 });
 
-client.on('message', (topic, message) => {
-    // Handle incoming messages here
-    // console.log(`Received message on topic ${topic}: ${message.toString()}`);
-
-    // const payload = message.toString();
-    // const jsonData = JSON.parse(payload);
-    // console.log('Received JSON data:', jsonData);
-
-    // // Extract payload from the JSON data
-    // const base64Payload = jsonData.uplink_message.frm_payload;
-
-    // // Decode base64 payload
-    // const decodedBuffer = Buffer.from(base64Payload, 'base64');
-
-    // // Convert buffer to string or handle it according to your data format
-    // const decodedString = decodedBuffer.toString('utf-8');
-
-    // console.log(decodedString); // Output: "\x02" (String representation of the hexadecimal value '02')
-
-
-
-    // Decode the payload
-    const deviceId = 55
-    const zone = 55
-    const newStatus = 1
-    let data = {
-        deviceId: deviceId,
-        zone: zone
-    };
-
-    updateLifebuoy(data, newStatus);
+client.on('message', async (topic, message)  => {
     
-    // webhook.emit('data', decodedString); TODO: Check this
-    // Emit an event when done
-    // lifebuoyEventEmitter.emit('messageReceived', "test");
+    const data = decodePayload(message)     // Store payload in array
+    const object = convertData(data)
+
+    // console.log(data)
+    // console.log(object)
+
+    const lifebuoy = await updateLifebuoy(object.lifebuoyQuery, object.newStatus)
+
+    // console.log(lifebuoy);
+    // console.log(lifebuoy.id);
+
+    // Decode the payload TODO:
+    // const deviceId = 55
+    // const zone = 55
+    // const newStatus = 1
+    // let data = {
+    //     deviceId: deviceId,
+    //     zone: zone
+    // }; 
+
+    console.log("in server.js", lifebuoy);
+
     // ChatGPT help TODO: Look up
     // Emit an event to all connected Socket.IO clients
-    io.emit('mqttMessage', message);
-    console.log('Emitting message to all connected clients:', message);
-    
-    
-});
+    io.emit('mqttMessage', lifebuoy);
+        
+})
 
 client.on('error', (err) => {
     console.error('MQTT client error:', err);
@@ -166,24 +153,66 @@ process.on('SIGINT', () => {
 });
 
 
-// TODO:
-function decodePayload(payload) {
-    // Decode the payload here
-    return payload;
+
+/**
+ * Decode payload from base64 to bytes
+ * @param {*} message message from MQTT that can be converted to JSON
+ * @returns An array containing all bytes from the payload
+ */
+function decodePayload(message) {
+    const payloadArray = []
+
+    // Handle incoming messages here
+    // console.log(`Received message on topic ${topic}: ${message.toString()}`);
+    // const payload = message.toString();
+    // const jsonData = JSON.parse(payload);
+    // console.log('Received JSON data:', jsonData);
+
+    const data = JSON.parse(message.toString());            // Convert to JSON object to be able to extract the payload
+    const payload = data.uplink_message.frm_payload;        // Get the raw payload that is in base64
+    const bytes = Buffer.from(payload, 'base64');           // Convert it to bytes
+
+    for (let i = 0; i < bytes.length; i++) {
+        let value = bytes.readInt8(i);
+        payloadArray.push(value);
+    }   
+    return payloadArray;
 }
 
-async function updateLifebuoy(lifebuoyQuery, status) {
+/**
+ * Takes the data sent from devices (the payload from TTN) 
+ * and converts to data that can be used to identify the 
+ * corresponding lifebuoy in the database.
+ * @param {*} payloadArray An array containing all bytes from the payload
+ * @returns
+ *     lifebuoyQuery - Object with deviceId and zone to identify the lifebuoy
+ *     newStatus - The value of the lifebuoy status (1 or 0 / In Place or Missing)
+ */
+function convertData(payloadArray) {
+    const deviceId = payloadArray[0];
+    const zone = payloadArray[1];
+    const newStatus = payloadArray[2];
 
-    // Get Lifebuoy from database
+    let lifebuoyQuery = {
+        deviceId: deviceId,
+        zone: zone
+    }
+    return {lifebuoyQuery, newStatus}
+}
+
+async function updateLifebuoy(lifebuoyQuery, status) { 
     try {
+        // Get Lifebuoy from database
         let lifebuoy = await Lifebuoy.findOne(lifebuoyQuery);
         if (lifebuoy) {
-            lifebuoy.status = status;
-            await lifebuoy.save();
+            lifebuoy.status = status
+            await lifebuoy.save()
+
+            return lifebuoy
         } else {
-            console.error('No lifebuoy found with the given filters:', lifebuoyQuery);
+            console.error('No lifebuoy found with the given filters:', lifebuoyQuery)
         }
     } catch (error) {
-        console.error('Error occurred while updating Lifebuoy:', error);
+        console.error('Error occurred while updating Lifebuoy:', error)
     }
 }

@@ -28,28 +28,41 @@
 
 <%- include('stats') %>
 
+<script src="/socket.io/socket.io.js"></script>
+<script>  
 
-<script>    
-    document.addEventListener('DOMContentLoaded', function () {
-        
-        // Object List
-        const section = document.getElementById('object-list')
+const socket = io('http://localhost:3000')    // TODO: Write in better way?
+  socket.on('mqttMessage', (message) => {
+    // The server sent a message, so refresh the page TODO: Change this
+    // location.reload();
+    console.log("MQTTTTTTTT")
+    console.log(message, markers)
 
-        // Setup Map
-        const KALMAR_latitude = 56.682439564675875;
-        const KALMAR_longitude = 16.343238456776742;
-        var map = L.map('map').setView([KALMAR_latitude, KALMAR_longitude], 13);
+    edit(message)
+  });
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
-        
-        // Setup Markers to Map, and Corresponding List Elements into Object List
-        <% lifebuoys.forEach(lifebuoy => { %>
+// Stora map markers
+let markers = {}
 
-            // Marker
-            var marker = L.marker([<%= lifebuoy.latitude %>, <%= lifebuoy.longitude %>]).addTo(map)
-            var markerContent = `
+document.addEventListener('DOMContentLoaded', function () {  
+    // Object List
+    const section = document.getElementById('object-list')
+
+    // Setup Map
+    const KALMAR_latitude = 56.682439564675875;
+    const KALMAR_longitude = 16.343238456776742;
+    var map = L.map('map').setView([KALMAR_latitude, KALMAR_longitude], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map)
+       
+    // Setup Markers to Map, and Corresponding List Elements into Object List
+    <% lifebuoys.forEach(lifebuoy => { %>
+        // Marker
+        var marker = L.marker([<%= lifebuoy.latitude %>, <%= lifebuoy.longitude %>]).addTo(map)
+        markers['<%= lifebuoy.id %>'] = marker
+        var markerContent = `
+        <div>
             <h3>Lifebuoy# <%= lifebuoy.deviceId %></h3>
             <ul>
                 <li><strong>Device ID</strong>: <%= lifebuoy.deviceId %></li>
@@ -64,45 +77,87 @@
                 <form method="POST" action="/lifebuoys/<%= lifebuoy.id %>?_method=DELETE">
                     <button type="submit">Delete</button>
                 </form>
-            </div>`
-            marker.bindPopup(markerContent)
-            
-            // Corresponding Object List Element TODO: duplicate code, refactor
-            var article = document.createElement('article')
-            var h2 = document.createElement('h2')
-            var ul = document.createElement('ul')
-            h2.innerHTML = `Lifebuoy #<%= lifebuoy.deviceId %>`
-            ul.innerHTML = `
-                <li><strong>Device ID</strong>: <%= lifebuoy.deviceId %></li>
-                <li><strong>Zone</strong>: <%= lifebuoy.zone %></li>
-                <li><strong>Coordinates</strong>: <%= lifebuoy.latitude %>, <%= lifebuoy.longitude %></li>
-                <li><strong>Expiration Date</strong>: <%= lifebuoy.expirationDate %></li>
-                <li><strong>Status</strong>: <%= lifebuoy.status %></li>
-            `
-            
-            <% if(lifebuoy.status == 0){ %>
-                article.classList.add('object-list-missing-lifebuoy')
-            <% } %>
-                              
-            // TODO:ChatGPT help with closure, is this OK or not?
-            article.addEventListener('click', (function(m) {
-                return function() {
-                    m.openPopup();
-                };
-            })(marker));
+            </div>
+        </div>`
+        marker.bindPopup(markerContent)
+        
+        // Corresponding Object List Element TODO: duplicate code, refactor
+        var lifebuoyElementWrapper = document.createElement('div')
 
-            article.append(h2,ul)
-            section.append(article)
-        <% }) %>
-    })
+        var article = document.createElement('article')
+        article.id ='<%= lifebuoy.id %>'
+        var h2 = document.createElement('h2')
+        var ul = document.createElement('ul')
+        h2.innerHTML = `Lifebuoy #<%= lifebuoy.deviceId %>`
+        ul.innerHTML = `
+            <li><strong>Device ID</strong>: <%= lifebuoy.deviceId %></li>
+            <li><strong>Zone</strong>: <%= lifebuoy.zone %></li>
+            <li><strong>Coordinates</strong>: <%= lifebuoy.latitude %>, <%= lifebuoy.longitude %></li>
+            <li><strong>Expiration Date</strong>: <%= lifebuoy.expirationDate %></li>
+            <li><strong>Status</strong>: <%= lifebuoy.status %></li>
+        `
+        
+        <% if(lifebuoy.status == 0){ %>
+            article.classList.add('object-list-missing-lifebuoy')
+        <% } %>
+                          
+        // TODO:ChatGPT help with closure, is this OK or not?
+        lifebuoyElementWrapper.addEventListener('click', (function(m) {
+            return function() {
+                m.openPopup();
+            };
+        })(marker));
+        article.append(h2,ul)
+        lifebuoyElementWrapper.append(article)
+        section.append(lifebuoyElementWrapper)
+    <% }) %>
+})
+
+
+// TODO: Duplicat code fix
+function edit(lifebuoy) {
+
+    const article = document.getElementById(lifebuoy._id)
+    const marker = markers[lifebuoy._id]
+
+    // Marker
+    var markerContent = `
+        <div>
+            <h3>Lifebuoy# ${lifebuoy.deviceId}</h3>
+            <ul>
+                <li><strong>Device ID</strong>: ${lifebuoy.deviceId}</li>
+                <li><strong>Zone</strong>: ${lifebuoy.zone}</li>
+                <li><strong>Coordinates</strong>: ${lifebuoy.latitude}, ${lifebuoy.longitude}</li>
+                <li><strong>Expiration Date</strong>: ${lifebuoy.expirationDate}</li>
+                <li><strong>Status</strong>: ${lifebuoy.status}</li>
+            </ul>
+            <div>
+                <a href="/lifebuoys/${lifebuoy.id}">Show</a>
+                <a href="/lifebuoys/${lifebuoy.id}/edit">Edit</a>
+                <form method="POST" action="/lifebuoys/${lifebuoy.id}?_method=DELETE">
+                    <button type="submit">Delete</button>
+                </form>
+            </div>
+        </div>`
+    marker.setPopupContent(markerContent)
+
+    // Article
+    article.innerHTML = `
+        <h2>Lifebuoy #${lifebuoy.deviceId}</h2>
+        <ul>
+            <li><strong>Device ID</strong>: ${lifebuoy.deviceId}</li>
+            <li><strong>Zone</strong>: ${lifebuoy.zone}</li>
+            <li><strong>Coordinates</strong>: ${lifebuoy.latitude}, ${lifebuoy.longitude}</li>
+            <li><strong>Expiration Date</strong>: ${lifebuoy.expirationDate}</li>
+            <li><strong>Status</strong>: ${lifebuoy.status}</li>
+        </ul>
+        `
+
+    if (lifebuoy.status == 0) {
+        article.classList.add('object-list-missing-lifebuoy');
+    } else {
+        article.classList.remove('object-list-missing-lifebuoy');
+    }   
+}
+
 </script>
-
-<script src="/socket.io/socket.io.js"></script>
-<script>
-  const socket = io('http://localhost:3000');
-  socket.on('mqttMessage', (message) => {
-    // The server sent a message, so refresh the page TODO: Change this
-    location.reload();
-  });
-</script>
-
