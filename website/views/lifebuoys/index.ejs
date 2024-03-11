@@ -80,6 +80,7 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>
         </div>`
         marker.bindPopup(markerContent)
+        setMarkerIcon(marker, <%= lifebuoy.status %>)
         
         // Corresponding Object List Element TODO: duplicate code, refactor
         var lifebuoyElementWrapper = document.createElement('div')
@@ -120,6 +121,8 @@ function edit(lifebuoy) {
     const article = document.getElementById(lifebuoy._id)
     const marker = markers[lifebuoy._id]
 
+    setMarkerIcon(marker, lifebuoy.status)
+
     // Marker
     var markerContent = `
         <div>
@@ -158,6 +161,24 @@ function edit(lifebuoy) {
     } else {
         article.classList.remove('object-list-missing-lifebuoy');
     }   
+}
+
+function setMarkerIcon(marker, status) {
+
+    let iconURL = ''
+
+    if (status == 0) {
+        iconURL = '/img/lifebuoy_icon_v2_missing_withShadow.png'
+    } else {
+        iconURL = '/img/lifebuoy_icon_v2_withShadow.png'
+    }
+
+    let icon = L.icon({
+        iconUrl: iconURL,
+        iconSize: [35, 39]
+    })
+
+    marker.setIcon(icon) 
 }
 
 </script>
