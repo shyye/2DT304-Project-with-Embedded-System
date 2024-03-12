@@ -18,6 +18,7 @@
  *
  * TTN
  * https://github.com/manuelbl/ttn-esp32 TODO: CHeck how to write this reference
+ * https://github.com/manuelbl/ttn-esp32/wiki/Get-Started
  * *******************************************************************************
  * 
  * ttn-esp32 - The Things Network device library for ESP-IDF / SX127x
@@ -31,102 +32,53 @@
  ******************************************************************************/
 
 #include <stdio.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/timers.h" // TODO: Check if this is needed
-#include "esp_timer.h"
-
-#include "esp_now.h"
 #include <string.h>
-#include "esp_log.h"
-#include "esp_system.h"
+
+// WiFi
 #include "esp_wifi.h"
-#include "nvs.h"
 #include "nvs_flash.h"
-#include "esp_system.h"
 
-#include "driver/uart.h"
+// ESP-NOW
+#include "esp_now.h"
 
-// For button
+// LoRa & TTN
+#include "ttn.h"
+#include "config.h"
+
+// FreeRTOS
+#include "freertos/FreeRTOS.h"
+
+// Button
 #include "driver/gpio.h"
 
-// Added for queue functionality
-#include "freertos/queue.h"
 
-// LORA TEST TODO:
-#include "ttn.h"
-
-// Pins and States
-#define BUTTON_PIN 25
-#define BUTTON_PRESSED 1
-#define BUTTON_NOT_PRESSED 0
-
+// --- ESP-NOW CONSTANTS ---
+// TODO: Don't need broadcast, will not send data to the devices
 // MAC Address of responder - edit as required
-uint8_t broadcastAddress[] = {0xa0, 0x76, 0x4e, 0x40, 0x37, 0xe0};
-uint8_t broadcastAddress1[] = {0xA0, 0x76, 0x4E, 0x45, 0x53, 0xAC};
+// uint8_t broadcastAddress[] = {0xa0, 0x76, 0x4e, 0x40, 0x37, 0xe0};
+// uint8_t broadcastAddress1[] = {0xA0, 0x76, 0x4E, 0x45, 0x53, 0xAC}; // TODO:
 
-// Define a data structure for recieved messages
+// Data structure for recieved messages
 typedef struct struct_message_received
 {
-    char a[32];
-    int id;
+    char a[32]; // TODO:
+    int id; // TODO: define as byte?
     int buttonValue;
     int hopcount;
-} struct_message_received ;
-
-struct_message_received data;
-
-
-// Define a data structure for checking own button (On the LoRa device )
-typedef struct struct_message_lora_button
-{
-    char a[32];
-    int id;
-    int buttonValue;
-} struct_message_lora_button ;
-
-struct_message_lora_button lora_button;
+} struct_message_received;
+struct_message_received data; // TODO:
 
 // Peer info
 esp_now_peer_info_t peerInfo;
 
-// Queue handle
-QueueHandle_t dataQueue;
 
-// Notify task handle
-TaskHandle_t vTaskReceiveDataHandle;
-
-
-// *** SET ID HERE ***
-// *
-int id = 00;
-// *
-// *******************
-
-
-
-
-
-
-// LORA TEST TODO:
-// Source: https://github.com/manuelbl/ttn-esp32/wiki/Get-Started
-
-// #include "ttn.h"
-
-// NOTE:
-// The LoRaWAN frequency and the radio chip must be configured by running 'idf.py menuconfig'.
-// Go to Components / The Things Network, select the appropriate values and save.
-
-// Copy the below hex strings from the TTN console (Applications > Your application > End devices
-// > Your device > Activation information)
-
-// Source: https://github.com/manuelbl/ttn-esp32/wiki/Get-Started
+// --- LoRa & TTN ---
 // AppEUI (sometimes called JoinEUI)
-const char *appEui = "0000000000000000";
+const char *appEui = APP_EUI;
 // DevEUI
-const char *devEui = "70B3D57ED00658F3";
+const char *devEui = DEV_EUI;
 // AppKey
-const char *appKey = "D676E7D701E4F46C65CA6AD453362466";
+const char *appKey = APP_KEY;
 
 // Pins and other resources
 #define TTN_SPI_HOST      HSPI_HOST
@@ -141,41 +93,25 @@ const char *appKey = "D676E7D701E4F46C65CA6AD453362466";
 #define TTN_PIN_DIO1      33
 
 #define TX_INTERVAL 30     // Interval between transmissions (seconds) TODO: Maybe not used now
-static uint8_t msgData[] = "Hello, world";
+// static uint8_t msgData[] = "Hello, world"; //TODO: change
+static uint8_t ttnData[3];      // 3 Bytes to TTN
 
 
-void sendMessages(uint8_t* msgData, size_t len)
-{
-    printf("Sending message...\n");
-    ttn_response_code_t res = ttn_transmit_message(msgData, sizeof(msgData) - 1, 1, false);
-    printf(res == TTN_SUCCESSFUL_TRANSMISSION ? "Message sent.\n" : "Transmission failed.\n");
-}
+// --- FreeRTOS CONSTANTS ---
+TaskHandle_t vTaskReceiveDataHandle;        // Notify task handle
 
-void messageReceived(const uint8_t* message, size_t length, ttn_port_t port)
-{
-    printf("Message of %d bytes received on port %d:", length, port);
-    for (int i = 0; i < length; i++)
-        printf(" %02x", message[i]);
-    printf("\n");
-}
-// LORA TEST END TODO:
+// Queue handle
+QueueHandle_t dataQueue;
+
+// Pins and States
+#define BUTTON_PIN 25
+#define BUTTON_PRESSED 1
+#define BUTTON_NOT_PRESSED 0
 
 
-
-
-
-
-
-
-
-
-// TODO: Should all functions have prototypes here?
-// ANd should no argument functions have void in their parameter?
-void sendDataToQueue(void *data); 
-
+// --- WIFI METHODS ---
 // Source: https://github.com/espressif/esp-now/blob/master/examples/get-started/main/app_main.c
 // TODO: Check provisioner vs. responder: https://github.com/espressif/esp-now/blob/master/examples/provisioning/main/app_main.c
-// TODO: Byt namn till wifi_init ?
 static void app_wifi_init()
 {
     // TODO: Here or in app_main?
@@ -192,8 +128,9 @@ static void app_wifi_init()
     ESP_ERROR_CHECK(esp_wifi_start());
 }
 
-// Alternative from Arduino:
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
+
+// --- ESP-NOW METHODS ---
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)      // TODO: not yet used
 {
     printf("\r\nLast Packet Send Status:\t");
     printf(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
@@ -204,158 +141,22 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
 {
     // Copy the incoming data to the data structure
     memcpy(&data, incomingData, sizeof(data));
-    // printf("Bytes received: %d\n", len);
+    printf("Bytes received: %d\n", len);
 
-    // Notify recieve task
-    xTaskNotifyGive(vTaskReceiveDataHandle); // TODO: Check if this is correct (vTaskReceiveDataHandle
-
-}
-
-// TODO: Change to vTaskFunction
-void sendData()
-{
-    data.id = id;
-    data.hopcount = data.hopcount - 1;
-
-    if (data.buttonValue == BUTTON_PRESSED)
-    {
-        strcpy(data.a, "Lifebuoy is here");     
-    }
-    else
-    {
-        strcpy(data.a, "Lifebuoy is gone!");
-    }
-
-    // Send message via ESP-NOW
-    esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *)&data, sizeof(data));
-    esp_err_t result1 = esp_now_send(broadcastAddress1, (uint8_t *)&data, sizeof(data));
-
-    if (result == ESP_OK)
-    {
-        printf("Sending confirmed");
-    }
-    else
-    {
-        printf("Sending error");
-    }
-}
-
-void sendDataToQueue(void *data)
-{
-    // Send data to queue
-    xQueueSendToBack(dataQueue, &data, 0);
-}
-
-
-/**
- * Read button value from GPIO (LoRa 32)
- * Store in data
- */
-void vTaskReadButtonValue(void *pvParameters)
-{
-    for (;;)
-    {
-        // Read button from GPIO
-        int newButtonValue = gpio_get_level(BUTTON_PIN);
-
-        // Send data if button vanlue has changed
-        if (newButtonValue != lora_button.buttonValue)
-        {
-            printf("\nButton value has changed LoRa\n");
-            // Store new value in data.buttonValue
-            lora_button.buttonValue = newButtonValue; //TODO: ID always same, dooesnät need to update
-
-            // Send data
-            printf("TEST fom own button\n");
-
-            lora_button.id = id;
-
-            if (lora_button.buttonValue == BUTTON_PRESSED)
-            {
-                strcpy(lora_button.a, "Lifebuoy is here");     
-            }
-            else
-            {
-                strcpy(lora_button.a, "Lifebuoy is gone!");
-            }
-
-            // Send message to queue
-            sendDataToQueue(&lora_button);
-        }
-
-        // printf("Task Check Button Value is running: %lld\n", esp_timer_get_time() / 1000);
-        // vTaskDelay(1000 / portTICK_PERIOD_MS);
-        vTaskDelay(1); // 1 == 10 ms, to avoid watchdog timer to get triggered, TODO: Check if this is a good idea
-    }
-}
-
-/**
- * Send data to database via LoRa
- */
-void vTaskSendDataToDatabase(void *pvParameters)
-{
-    for (;;)
-    {
-        // if (xQueueReceive(dataQueue, &data, 0) == pdTRUE)
-        // TODO: The above solution triggers watchdog timer
-        if (xQueueReceive(dataQueue, &data, portMAX_DELAY))
-        {
-            printf("---> Data is in queue\n");
-            printf("---> Should now send data to database\n");
-
-            // Test message TODO: test this
-            uint8_t testMsg[] = {0x01, 0x02, 0x03};
-            sendMessages(testMsg, sizeof(testMsg));
-        }
-        
-    }
-    vTaskDelete(NULL);
-}
-
-/**
- * Callback function when data is received via bluetooth or WiFi from Seeed devices
- * Maybe this should just be an ordinary fumction and not a task
- * TODO:
- */
-void vTaskReceiveData(void *pvParameters)
-{
-    for (;;)
-    {
-        // Wait for the notification
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
-        printf("Data received: %s\n", data.a);
-        printf("ID of the sender: %d\n", data.id);
-        printf("Button value: %d\n", data.buttonValue);
-        printf("Hops left: %d\n", data.hopcount);
-
-        // TODO: Check this structure
-        printf("---> OnDataRecv, sending to queue\n");
-        // Send data to queue
-        //sendData();
-        sendDataToQueue(&data);
-    }
-}
-
-
-
-void app_main(void)
-{    
-    // Create the queue
-    // TODO: SHould put the que size 10 as a global variable
-    dataQueue = xQueueCreate(10, sizeof(struct_message_received)); // TODO: Check if struct_message is standard or can be whatever we created aboive
-
-
-    // Set up Serial Monitor
-    // Serial.begin(115200);
-    // TODO: Är detta uart config här: https://github.com/espressif/esp-now/blob/master/examples/get-started/main/app_main.c
+    // Print the received data
+    printf("Received Data:\n");
+    printf("a: %s\n", data.a);
+    printf("id: %d\n", data.id);
+    printf("buttonValue: %d\n", data.buttonValue);
+    printf("hopcount: %d\n", data.hopcount);
+    printf("-------\n");
     
-    
-    // Set ESP32 as a Wi-Fi Station
-    // WiFi.mode(WIFI_STA);
-    app_wifi_init();
+    // Notify receive task
+    xTaskNotifyGive(vTaskReceiveDataHandle); // TODO: Check if this is correct (vTaskReceiveDataHandle)
+}
 
-    // Initilize ESP-NOW
+static void app_esp_now_init()
+{
     if (esp_now_init() != ESP_OK)
     {
         printf("\nError initializing ESP-NOW");
@@ -364,39 +165,56 @@ void app_main(void)
 
     // Register callback function
     esp_now_register_recv_cb(OnDataRecv);
-    esp_now_register_send_cb(OnDataSent);
 
-    // Register peer
-    memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-    peerInfo.channel = 0;
-    peerInfo.encrypt = false;
+    // TODO: Could implement send feature if the LoRa should be able to send data to the Seeed devices
 
-    // Add peer
-    if (esp_now_add_peer(&peerInfo) != ESP_OK)
-    {
-        printf("Failed to add peer");
-        return;
-    }
+    // TODO: Don't need, will not send data to the devices
+    // esp_now_register_send_cb(OnDataSent);
 
-    memcpy(peerInfo.peer_addr, broadcastAddress1, 6);
-    peerInfo.channel = 1;
-    peerInfo.encrypt = false;
+    // // Register peer
+    // memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+    // peerInfo.channel = 0;
+    // peerInfo.encrypt = false;
 
-    // Add peer
-    if (esp_now_add_peer(&peerInfo) != ESP_OK)
-    {
-        printf("Failed to add peer");
-        return;
-    }
+    // // Add peer
+    // if (esp_now_add_peer(&peerInfo) != ESP_OK)
+    // {
+    //     printf("Failed to add peer");
+    //     return;
+    // }
+
+    // memcpy(peerInfo.peer_addr, broadcastAddress1, 6);
+    // peerInfo.channel = 1;
+    // peerInfo.encrypt = false;
+
+    // // Add peer
+    // if (esp_now_add_peer(&peerInfo) != ESP_OK)
+    // {
+    //     printf("Failed to add peer");
+    //     return;
+    // }
+}
 
 
+// --- LoRa & TTN METHODS ---
+void TTN_sendMessage(uint8_t* ttnData, size_t len)
+{
+    printf("Sending message...\n");
+    ttn_response_code_t res = ttn_transmit_message(ttnData, sizeof(ttnData) - 1, 1, false);
+    printf(res == TTN_SUCCESSFUL_TRANSMISSION ? "Message sent.\n" : "Transmission failed.\n");
+}
 
+void TTN_messageReceived(const uint8_t* message, size_t length, ttn_port_t port)
+{
+    printf("Message of %d bytes received on port %d:", length, port);
+    for (int i = 0; i < length; i++)
+        printf(" %02x", message[i]);
+    printf("\n");
+}
 
-
-
-    // LORA TEST TODO:
-
-     esp_err_t err;
+static void app_lora_ttn_init()
+{
+    esp_err_t err;
     // Initialize the GPIO ISR handler service
     err = gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
     ESP_ERROR_CHECK(err);
@@ -426,7 +244,7 @@ void app_main(void)
     ttn_provision(devEui, appEui, appKey);
 
     // Register callback for received messages
-    ttn_on_message(messageReceived);
+    ttn_on_message(TTN_messageReceived);
 
     // ttn_set_adr_enabled(false);
     // ttn_set_data_rate(TTN_DR_US915_SF7);
@@ -436,9 +254,99 @@ void app_main(void)
     if (ttn_join())
     {
         printf("Joined.\n");
-        // xTaskCreate(sendMessages, "send_messages", 1024 * 4, (void* )0, 3, NULL);
+    }
+    else
+    {
+        printf("Join failed. Goodbye\n");
+    }
+}
 
-        // MESSAGE CODES
+
+// --- FreeRTOS METHODS ---
+/**
+ * Callback function when data is received via bluetooth or WiFi from Seeed devices
+ */
+void sendDataToQueue(void *data)
+{
+    // Send data to queue
+    // xQueueSendToBack(dataQueue, &data, 0);
+    xQueueSendToBack(dataQueue, data, 0);   //TODO: check value 0 wait when queu is full
+
+    printf("Data sent to queue\n");         //TODO: remove
+}
+
+void vTaskReceiveData(void *pvParameters)
+{
+    while(1)
+    {   
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);        // Wait for notification from onDataRecv()
+
+        // TODO: Check this structure
+        printf("---> OnDataRecv, sending to queue\n");
+
+        // Test
+        // ttnData[0] = 10; // ID value
+        // ttnData[1] = 01; // Button value
+        // ttnData[2] = 03; // Hopcount
+
+        ttnData[0] = 10;                // Zone value for this LoRa device
+        ttnData[1] = data.id;           // Device ID, incoming data from Seeed device
+        ttnData[2] = data.buttonValue;  // Button value, , incoming data from Seeed device     
+        sendDataToQueue(ttnData);
+    }
+}
+
+/**
+ * Send data to database via LoRa
+ */
+void vTaskSendDataToDatabase(void *pvParameters)
+{
+    while(1)
+    {
+        // if (xQueueReceive(dataQueue, &data, 0) == pdTRUE)
+        // TODO: The above solution triggers watchdog timer
+        // if (xQueueReceive(dataQueue, &data, portMAX_DELAY))
+        if (xQueueReceive(dataQueue, &ttnData, portMAX_DELAY))
+        {
+            printf("---> Data is in queue\n");
+            printf("---> Should now send data to database\n");
+
+            TTN_sendMessage(ttnData, sizeof(ttnData));            
+        }
+        
+    }
+    vTaskDelete(NULL);
+}
+
+
+
+
+// --- MAIN ---
+void app_main()
+{
+   // TODO: Create Queue
+
+   // Wifi
+   app_wifi_init();
+
+   // ESP-NOW
+   app_esp_now_init();
+
+   // LoRA & TTN
+   app_lora_ttn_init();
+
+   // FreeRTOS
+   dataQueue = xQueueCreate(10, sizeof(ttnData)); // TODO: Check if struct_message is standard or can be whatever we created aboive, ALso make constant for 10 queue size
+   xTaskCreate(vTaskReceiveData, "Receive Data", 2048, NULL, 1, &vTaskReceiveDataHandle); // TODO: Check if this is correct (vTaskReceiveDataHandle)
+   xTaskCreate(vTaskSendDataToDatabase, "Send Data To Database", 2048, NULL, 1, NULL);
+};
+
+
+
+
+
+
+// MESSAGE CODES
         // Message type:
         //    00 - Connection Check
         //    01 - Lifebuoy Monitoring
@@ -457,33 +365,3 @@ void app_main(void)
         //    00 - No connection
         //    01 - Connection
         // Battery level: 00 - 99
-
-
-        // // Test message
-        // uint8_t testMsg[] = {0x01, 0x02, 0x03};
-        // sendMessages(testMsg, sizeof(testMsg));
-
-        // Test send message to queue
-    }
-    else
-    {
-        printf("Join failed. Goodbye\n");
-    }
-
-    // LORA TEST END TODO:
-
-
-
-
-
-
-
-
-
-
-    // Create tasks
-    // Parameter #5 is the priority of the task
-    xTaskCreate(vTaskReadButtonValue, "Check Button Value", 2048, NULL, 1, NULL); 
-    xTaskCreate(vTaskSendDataToDatabase, "Send Data To Database", 2048, NULL, 1, NULL);
-    xTaskCreate(vTaskReceiveData, "Receive Data", 2048, NULL, 1, &vTaskReceiveDataHandle); // TODO: Check if this is correct (vTaskReceiveDataHandle)
-}
