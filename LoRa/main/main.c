@@ -47,18 +47,18 @@
 
 // FreeRTOS
 #include "freertos/FreeRTOS.h"
+#include "esp_event.h"
 
-// Button
+// GPIO
 #include "driver/gpio.h"
+#include "nvs_flash.h"
 
 
-// --- ESP-NOW CONSTANTS ---
-// TODO: Don't need broadcast, will not send data to the devices
-// MAC Address of responder - edit as required
-// uint8_t broadcastAddress[] = {0xa0, 0x76, 0x4e, 0x40, 0x37, 0xe0};
-// uint8_t broadcastAddress1[] = {0xA0, 0x76, 0x4E, 0x45, 0x53, 0xAC}; // TODO:
+// LoRa device - CONSTANTS
+uint8_t zone = 15;
 
-// Data structure for recieved messages
+
+// ESP-NOW -CONSTANTS
 typedef struct struct_message_received
 {
     char a[32]; // TODO:
@@ -66,13 +66,19 @@ typedef struct struct_message_received
     int buttonValue;
     int hopcount;
 } struct_message_received;
-struct_message_received data; // TODO:
 
-// Peer info
-esp_now_peer_info_t peerInfo;
+struct_message_received seeedData;
 
 
-// --- LoRa & TTN ---
+
+// LoRa & TTN - CONSTANTS
+// NOTE: TODO:
+// The LoRaWAN frequency and the radio chip must be configured by running 'idf.py menuconfig'.
+// Go to Components / The Things Network, select the appropriate values and save.
+
+// Copy the below hex strings from the TTN console (Applications > Your application > End devices
+// > Your device > Activation information)
+
 // AppEUI (sometimes called JoinEUI)
 const char *appEui = APP_EUI;
 // DevEUI
@@ -81,8 +87,8 @@ const char *devEui = DEV_EUI;
 const char *appKey = APP_KEY;
 
 // Pins and other resources
-#define TTN_SPI_HOST      HSPI_HOST
-#define TTN_SPI_DMA_CHAN  1
+#define TTN_SPI_HOST      SPI2_HOST
+#define TTN_SPI_DMA_CHAN  SPI_DMA_DISABLED
 #define TTN_PIN_SPI_SCLK  5
 #define TTN_PIN_SPI_MOSI  27
 #define TTN_PIN_SPI_MISO  19
@@ -90,28 +96,41 @@ const char *appKey = APP_KEY;
 #define TTN_PIN_RXTX      TTN_NOT_CONNECTED
 #define TTN_PIN_RST       14
 #define TTN_PIN_DIO0      26
-#define TTN_PIN_DIO1      33
+#define TTN_PIN_DIO1      35
 
-#define TX_INTERVAL 30     // Interval between transmissions (seconds) TODO: Maybe not used now
-// static uint8_t msgData[] = "Hello, world"; //TODO: change
-static uint8_t ttnData[3];      // 3 Bytes to TTN
-
-
-// --- FreeRTOS CONSTANTS ---
-TaskHandle_t vTaskReceiveDataHandle;        // Notify task handle
-
-// Queue handle
-QueueHandle_t dataQueue;
-
-// Pins and States
-#define BUTTON_PIN 25
-#define BUTTON_PRESSED 1
-#define BUTTON_NOT_PRESSED 0
+#define TX_INTERVAL 30 // TODO:
+static uint8_t msgData[3];      // 3 Bytes to TTN
 
 
-// --- WIFI METHODS ---
-// Source: https://github.com/espressif/esp-now/blob/master/examples/get-started/main/app_main.c
-// TODO: Check provisioner vs. responder: https://github.com/espressif/esp-now/blob/master/examples/provisioning/main/app_main.c
+// FreeRTOS - CONSTANTS
+QueueHandle_t ttnQueue;
+
+
+// ESP-NOW - FUNCTIONS
+// Callback function executed when data is sent
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
+{
+    printf("\r\nLast Packet Send Status:\t");
+    printf(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+}
+
+// Callback function executed when data is received TODO: SHould this create an RTOS task?
+void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
+{
+    // Copy the incoming data to the data structure
+    memcpy(&seeedData, incomingData, sizeof(seeedData));
+
+    uint8_t ttnData[3];
+    ttnData[0] = zone;
+    ttnData[1] = seeedData.id;
+    ttnData[2] = seeedData.buttonValue;
+
+    // uint8_t test[3] = {10, 02, 04};
+    // xQueueSend(ttnQueue, test, portMAX_DELAY);
+
+    xQueueSend(ttnQueue, ttnData, portMAX_DELAY);
+}
+
 static void app_wifi_init()
 {
     // TODO: Here or in app_main?
@@ -128,33 +147,6 @@ static void app_wifi_init()
     ESP_ERROR_CHECK(esp_wifi_start());
 }
 
-
-// --- ESP-NOW METHODS ---
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)      // TODO: not yet used
-{
-    printf("\r\nLast Packet Send Status:\t");
-    printf(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-}
-
-// Callback function executed when data is received
-void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
-{
-    // Copy the incoming data to the data structure
-    memcpy(&data, incomingData, sizeof(data));
-    printf("Bytes received: %d\n", len);
-
-    // Print the received data
-    printf("Received Data:\n");
-    printf("a: %s\n", data.a);
-    printf("id: %d\n", data.id);
-    printf("buttonValue: %d\n", data.buttonValue);
-    printf("hopcount: %d\n", data.hopcount);
-    printf("-------\n");
-    
-    // Notify receive task
-    xTaskNotifyGive(vTaskReceiveDataHandle); // TODO: Check if this is correct (vTaskReceiveDataHandle)
-}
-
 static void app_esp_now_init()
 {
     if (esp_now_init() != ESP_OK)
@@ -165,46 +157,22 @@ static void app_esp_now_init()
 
     // Register callback function
     esp_now_register_recv_cb(OnDataRecv);
-
-    // TODO: Could implement send feature if the LoRa should be able to send data to the Seeed devices
-
-    // TODO: Don't need, will not send data to the devices
-    // esp_now_register_send_cb(OnDataSent);
-
-    // // Register peer
-    // memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-    // peerInfo.channel = 0;
-    // peerInfo.encrypt = false;
-
-    // // Add peer
-    // if (esp_now_add_peer(&peerInfo) != ESP_OK)
-    // {
-    //     printf("Failed to add peer");
-    //     return;
-    // }
-
-    // memcpy(peerInfo.peer_addr, broadcastAddress1, 6);
-    // peerInfo.channel = 1;
-    // peerInfo.encrypt = false;
-
-    // // Add peer
-    // if (esp_now_add_peer(&peerInfo) != ESP_OK)
-    // {
-    //     printf("Failed to add peer");
-    //     return;
-    // }
 }
 
 
-// --- LoRa & TTN METHODS ---
-void TTN_sendMessage(uint8_t* ttnData, size_t len)
+// LoRa & TTN - FUNCTIONS
+void sendMessages(void* pvParameter)        // TODO: Not used
 {
+    uint8_t* ttnData = (uint8_t*) pvParameter;
     printf("Sending message...\n");
-    ttn_response_code_t res = ttn_transmit_message(ttnData, sizeof(ttnData) - 1, 1, false);
+    ttn_response_code_t res = ttn_transmit_message(ttnData, sizeof(ttnData), 1, false);
     printf(res == TTN_SUCCESSFUL_TRANSMISSION ? "Message sent.\n" : "Transmission failed.\n");
+
+    vTaskDelete(NULL);
 }
 
-void TTN_messageReceived(const uint8_t* message, size_t length, ttn_port_t port)
+// TODO: Not currently used
+void messageReceived(const uint8_t* message, size_t length, ttn_port_t port)
 {
     printf("Message of %d bytes received on port %d:", length, port);
     for (int i = 0; i < length; i++)
@@ -212,9 +180,8 @@ void TTN_messageReceived(const uint8_t* message, size_t length, ttn_port_t port)
     printf("\n");
 }
 
-static void app_lora_ttn_init()
-{
-    esp_err_t err;
+static void app_lora_ttn_init() {
+     esp_err_t err;
     // Initialize the GPIO ISR handler service
     err = gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
     ESP_ERROR_CHECK(err);
@@ -244,7 +211,7 @@ static void app_lora_ttn_init()
     ttn_provision(devEui, appEui, appKey);
 
     // Register callback for received messages
-    ttn_on_message(TTN_messageReceived);
+    ttn_on_message(messageReceived);
 
     // ttn_set_adr_enabled(false);
     // ttn_set_data_rate(TTN_DR_US915_SF7);
@@ -262,71 +229,46 @@ static void app_lora_ttn_init()
 }
 
 
-// --- FreeRTOS METHODS ---
-/**
- * Callback function when data is received via bluetooth or WiFi from Seeed devices
- */
-void sendDataToQueue(void *data)
+
+
+
+
+void vCheckQueueTask(void* pvParameter)
 {
-    // Send data to queue
-    // xQueueSendToBack(dataQueue, &data, 0);
-    xQueueSendToBack(dataQueue, data, 0);   //TODO: check value 0 wait when queu is full
+    uint8_t data[3];   // Variable to store the data in the queue TODO: Fix variable size
+    BaseType_t xStatus; 
+    while (1) {
 
-    printf("Data sent to queue\n");         //TODO: remove
-}
-
-void vTaskReceiveData(void *pvParameters)
-{
-    while(1)
-    {   
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);        // Wait for notification from onDataRecv()
-
-        // TODO: Check this structure
-        printf("---> OnDataRecv, sending to queue\n");
-
-        // Test
-        // ttnData[0] = 10; // ID value
-        // ttnData[1] = 01; // Button value
-        // ttnData[2] = 03; // Hopcount
-
-        ttnData[0] = 10;                // Zone value for this LoRa device
-        ttnData[1] = data.id;           // Device ID, incoming data from Seeed device
-        ttnData[2] = data.buttonValue;  // Button value, , incoming data from Seeed device     
-        sendDataToQueue(ttnData);
-    }
-}
-
-/**
- * Send data to database via LoRa
- */
-void vTaskSendDataToDatabase(void *pvParameters)
-{
-    while(1)
-    {
-        // if (xQueueReceive(dataQueue, &data, 0) == pdTRUE)
-        // TODO: The above solution triggers watchdog timer
-        // if (xQueueReceive(dataQueue, &data, portMAX_DELAY))
-        if (xQueueReceive(dataQueue, &ttnData, portMAX_DELAY))
+        xStatus = xQueueReceive( ttnQueue, &data, portMAX_DELAY );
+        if( xStatus == pdPASS )
         {
-            printf("---> Data is in queue\n");
-            printf("---> Should now send data to database\n");
+            /* Data was successfully received from the queue, print out the
+            received value. */
+            printf("Received = ");
+            for (int i = 0; i < sizeof(data); i++) {
+                printf("%d ", data[i]);
+            }
+            printf("\r\n");
 
-            TTN_sendMessage(ttnData, sizeof(ttnData));            
+            // xTaskCreate(sendMessages, "send_messages", 1024 * 4, (void* )data, 1, NULL); // TODO: check this more
+
+            ttn_response_code_t res = ttn_transmit_message(data, sizeof(data), 1, false);
+            printf(res == TTN_SUCCESSFUL_TRANSMISSION ? "Message sent.\n" : "Transmission failed.\n");
         }
-        
+        else
+        {
+            /* Data was not received from the queue even after waiting for
+            100ms. This must be an error as the sending tasks are free
+            running and will be continuously writing to the queue. */
+            printf( "Could not receive from the queue.\r\n" );
+        } 
     }
-    vTaskDelete(NULL);
 }
 
 
-
-
-// --- MAIN ---
-void app_main()
+void app_main(void)
 {
-   // TODO: Create Queue
-
-   // Wifi
+    // Wifi
    app_wifi_init();
 
    // ESP-NOW
@@ -335,33 +277,17 @@ void app_main()
    // LoRA & TTN
    app_lora_ttn_init();
 
-   // FreeRTOS
-   dataQueue = xQueueCreate(10, sizeof(ttnData)); // TODO: Check if struct_message is standard or can be whatever we created aboive, ALso make constant for 10 queue size
-   xTaskCreate(vTaskReceiveData, "Receive Data", 2048, NULL, 1, &vTaskReceiveDataHandle); // TODO: Check if this is correct (vTaskReceiveDataHandle)
-   xTaskCreate(vTaskSendDataToDatabase, "Send Data To Database", 2048, NULL, 1, NULL);
-};
+    // Queue with data to TTN
+    ttnQueue = xQueueCreate(10, sizeof(msgData));
+    if (ttnQueue != NULL) {
 
+        printf("ttnQueue succesfully created\n");
 
+        xTaskCreate(vCheckQueueTask, "task_check_queue", 8192, NULL, 2, NULL);      // Check Stack size, 4096 works also
 
-
-
-
-// MESSAGE CODES
-        // Message type:
-        //    00 - Connection Check
-        //    01 - Lifebuoy Monitoring
-
-        // Message type, Zone, ID, Button value. (E.g. 01, 03, 01)
-        // Message type: 01
-        // Zone: 01 - 99
-        // ID: 01 - 99
-        // Button value:
-        //    00 - Missing
-        //    01 - In place
-
-        // Message type, Connection, Battery level
-        // Message type: 00
-        // Conncetion:
-        //    00 - No connection
-        //    01 - Connection
-        // Battery level: 00 - 99
+    } else {
+        printf("ttnQueue failed to create\n");
+    }   
+    
+    
+}
