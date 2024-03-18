@@ -42,7 +42,8 @@ void loop() {
 ## Seeed XIAO
 ### Change settings with VSCode Extension for ESP-IDF
 1. Choose ESP32-C3
-2. .....
+2. Choose COM PORT
+3. Chooose UART
 
 ### Troubleshooting
 If the device doesn't want to connect.  
