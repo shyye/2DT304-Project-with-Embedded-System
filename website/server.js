@@ -189,13 +189,13 @@ function decodePayload(message) {
  *     newStatus - The value of the lifebuoy status (1 or 0 / In Place or Missing)
  */
 function convertData(payloadArray) {
-    const deviceId = payloadArray[0];
-    const zone = payloadArray[1];
+    const zone = payloadArray[0];
+    const deviceId = payloadArray[1];
     const newStatus = payloadArray[2];
 
     let lifebuoyQuery = {
-        deviceId: deviceId,
-        zone: zone
+        zone: zone,
+        deviceId: deviceId       
     }
     return {lifebuoyQuery, newStatus}
 }
