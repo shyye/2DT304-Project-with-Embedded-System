@@ -61,13 +61,58 @@ uint8_t zone = 15;
 // ESP-NOW -CONSTANTS
 typedef struct struct_message_received
 {
-    char a[32]; // TODO:
+    // char a[32]; // TODO:
     int id; // TODO: define as byte?
     int buttonValue;
     int hopcount;
 } struct_message_received;
 
 struct_message_received seeedData;
+
+
+
+
+
+// Last values from Seeed devices (to prevent the LoRa device from sending duplicated data to TTN)
+typedef struct {
+    uint8_t id;
+    uint8_t lastButtonValue;
+} SeeedDevice;
+
+// Array to store Seeed devices
+// Format: {id, lastButtonValue}
+// 99 is placeholder for inital value
+SeeedDevice seeedDevices[] = {
+    {01, 99},
+    {02, 99}, 
+    {03, 99}, 
+};
+
+#define NUM_SEEED_DEVICES (sizeof(seeedDevices) / sizeof(seeedDevices[0]))
+
+// Update the last button value for a Seeed device
+void updateSeeedDevice(int id, int buttonValue)
+{
+    for (int i = 0; i < NUM_SEEED_DEVICES; i++) {
+        if (seeedDevices[i].id == id) {
+            seeedDevices[i].lastButtonValue = buttonValue;
+            break;
+        }
+    }
+}
+
+// Check if a Seeed device is present in the array
+bool isSeeedDevicePresent(int id)
+{
+    for (int i = 0; i < NUM_SEEED_DEVICES; i++) {
+        if (seeedDevices[i].id == id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+
 
 
 
@@ -125,16 +170,16 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
     ttnData[1] = seeedData.id;
     ttnData[2] = seeedData.buttonValue;
 
-    // uint8_t test[3] = {10, 02, 04};
-    // xQueueSend(ttnQueue, test, portMAX_DELAY);
+    // // uint8_t test[3] = {10, 02, 04};
+    // // xQueueSend(ttnQueue, test, portMAX_DELAY);
 
     xQueueSend(ttnQueue, ttnData, portMAX_DELAY);
 }
 
+// Source: https://github.com/espressif/esp-now/blob/master/examples/get-started/main/app_main.c
 static void app_wifi_init()
 {
-    // TODO: Here or in app_main?
-    nvs_flash_init();   // Not in the example above but necessary to prevent errors
+    nvs_flash_init();   // Not included in the example from the source above but necessary to prevent errors
 
     esp_event_loop_create_default();
 
@@ -231,9 +276,7 @@ static void app_lora_ttn_init() {
 
 
 
-
-
-void vCheckQueueTask(void* pvParameter)
+void vCheckQueueTask(void* pvParameter)     // TODO: Fix name
 {
     uint8_t data[3];   // Variable to store the data in the queue TODO: Fix variable size
     BaseType_t xStatus; 
@@ -250,10 +293,46 @@ void vCheckQueueTask(void* pvParameter)
             }
             printf("\r\n");
 
+
+
+            
+            // Check if the Seeed device is present in the array
+
+            // data[1] = id value sent to the queue
+            // data[2] = button value send to the queue
+
+            if (!isSeeedDevicePresent(data[1])) {
+                // Device not found in the predefined list, ignore the message
+                return;
+            }
+
+            // Check if the button value has changed since the last transmission
+            bool sendToTTN = false;
+
+            for (int i = 0; i < NUM_SEEED_DEVICES; i++) {
+                // Check if the button value has changed since the last transmission
+                bool isSameId = seeedDevices[i].id == data[1];
+                bool isDifferentButtonValue = seeedDevices[i].lastButtonValue != data[2];
+
+                if (isSameId && isDifferentButtonValue) {
+                    // Update the last button value
+                    seeedDevices[i].lastButtonValue = data[2];
+                    sendToTTN = true;
+                }
+            }
+
+            // If the button value has changed, send the data to TTN
+            if (sendToTTN) {
+
+                ttn_response_code_t res = ttn_transmit_message(data, sizeof(data), 1, false);
+                printf(res == TTN_SUCCESSFUL_TRANSMISSION ? "Message sent.\n" : "Transmission failed.\n");
+            }
+
+
+
             // xTaskCreate(sendMessages, "send_messages", 1024 * 4, (void* )data, 1, NULL); // TODO: check this more
 
-            ttn_response_code_t res = ttn_transmit_message(data, sizeof(data), 1, false);
-            printf(res == TTN_SUCCESSFUL_TRANSMISSION ? "Message sent.\n" : "Transmission failed.\n");
+            
         }
         else
         {
@@ -269,25 +348,22 @@ void vCheckQueueTask(void* pvParameter)
 void app_main(void)
 {
     // Wifi
-   app_wifi_init();
+    app_wifi_init();
 
-   // ESP-NOW
-   app_esp_now_init();
+    // ESP-NOW
+    app_esp_now_init();
 
-   // LoRA & TTN
-   app_lora_ttn_init();
+    // LoRA & TTN
+    app_lora_ttn_init();
 
     // Queue with data to TTN
     ttnQueue = xQueueCreate(10, sizeof(msgData));
     if (ttnQueue != NULL) {
 
         printf("ttnQueue succesfully created\n");
-
         xTaskCreate(vCheckQueueTask, "task_check_queue", 8192, NULL, 2, NULL);      // Check Stack size, 4096 works also
 
     } else {
         printf("ttnQueue failed to create\n");
-    }   
-    
-    
+    }  
 }
