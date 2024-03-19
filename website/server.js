@@ -113,33 +113,42 @@ client.on('connect', () => {
 });
 
 client.on('message', async (topic, message)  => {
+
     
     const data = decodePayload(message)     // Store payload in array
-    const object = convertData(data)
 
-    // console.log(data)
-    // console.log(object)
+    if (data !== undefined) {
 
-    const lifebuoy = await updateLifebuoy(object.lifebuoyQuery, object.newStatus)
+        const object = convertData(data)
 
-    // console.log(lifebuoy);
-    // console.log(lifebuoy.id);
+        // console.log(data)
+        // console.log(object)
 
-    // Decode the payload TODO:
-    // const deviceId = 55
-    // const zone = 55
-    // const newStatus = 1
-    // let data = {
-    //     deviceId: deviceId,
-    //     zone: zone
-    // }; 
+        const lifebuoy = await updateLifebuoy(object.lifebuoyQuery, object.newStatus)
 
-    console.log("in server.js", lifebuoy);
+        // console.log(lifebuoy);
+        // console.log(lifebuoy.id);
 
-    // ChatGPT help TODO: Look up
-    // Emit an event to all connected Socket.IO clients
-    io.emit('mqttMessage', lifebuoy);
+        // Decode the payload TODO:
+        // const deviceId = 55
+        // const zone = 55
+        // const newStatus = 1
+        // let data = {
+        //     deviceId: deviceId,
+        //     zone: zone
+        // }; 
+
+        console.log("in server.js", lifebuoy);
+
+        // ChatGPT help TODO: Look up
+        // Emit an event to all connected Socket.IO clients
+        io.emit('mqttMessage', lifebuoy);
         
+        
+    } else {
+        console.error("Payload data was undefined");
+    }
+    
 })
 
 client.on('error', (err) => {
@@ -170,6 +179,13 @@ function decodePayload(message) {
 
     const data = JSON.parse(message.toString());            // Convert to JSON object to be able to extract the payload
     const payload = data.uplink_message.frm_payload;        // Get the raw payload that is in base64
+    
+    // Make sure that the payload is not undefined
+    if (payload === undefined) {
+        console.error('No payload found in message:', data);
+        return undefined;
+    }
+
     const bytes = Buffer.from(payload, 'base64');           // Convert it to bytes
 
     for (let i = 0; i < bytes.length; i++) {
