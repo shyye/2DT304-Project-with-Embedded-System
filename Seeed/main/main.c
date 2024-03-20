@@ -37,7 +37,7 @@
 
 // *** SET DEVICE ID HERE ***
 // *
-int id = 1;
+int id = 2;
 int buttonValue = 0;
 // *
 // *******************
@@ -157,8 +157,8 @@ void vTaskReadButtonValue(void *pvParameters)
         }
 
         // printf("Task Check Button Value is running: %lld\n", esp_timer_get_time() / 1000);
-        // vTaskDelay(1000 / portTICK_PERIOD_MS);
-        vTaskDelay(1); // 1 == 10 ms, to avoid watchdog timer to get triggered, TODO: Check if this is a good idea
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        // vTaskDelay(1); // 1 == 10 ms, to avoid watchdog timer to get triggered, TODO: Check if this is a good idea
     }
 }
 
