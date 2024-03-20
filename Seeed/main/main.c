@@ -38,6 +38,7 @@
 // *** SET DEVICE ID HERE ***
 // *
 int id = 1;
+int buttonValue = 0;
 // *
 // *******************
 
@@ -117,6 +118,7 @@ void sendData(int id, int hopcount, int buttonValue)
 {
     data.id = id;
     data.hopcount = hopcount - 1;
+    data.buttonValue = buttonValue;
 
     // Send message via ESP-NOW
     esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *)&data, sizeof(data));
@@ -145,14 +147,13 @@ void vTaskReadButtonValue(void *pvParameters)
         int newButtonValue = gpio_get_level(BUTTON_PIN);
 
         // Send data if button vanlue has changed
-        if (newButtonValue != data.buttonValue)
+        if (newButtonValue != buttonValue)
         {
             printf("\nButton value has changed\n");
             // Store new value in data.buttonValue
-            data.buttonValue = newButtonValue;
-
+            buttonValue = newButtonValue;
             // Send data to LoRa device
-            sendData(id, 4, data.buttonValue);
+            sendData(id, 4, buttonValue);
         }
 
         // printf("Task Check Button Value is running: %lld\n", esp_timer_get_time() / 1000);
