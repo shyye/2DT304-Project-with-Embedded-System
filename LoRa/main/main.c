@@ -17,9 +17,9 @@
  *
  *
  * TTN
- * https://github.com/manuelbl/ttn-esp32 TODO: CHeck how to write this reference
- * https://github.com/manuelbl/ttn-esp32/wiki/Get-Started
  * *******************************************************************************
+ * https://github.com/manuelbl/ttn-esp32
+ * https://github.com/manuelbl/ttn-esp32/wiki/Get-Started
  * 
  * ttn-esp32 - The Things Network device library for ESP-IDF / SX127x
  * 
@@ -61,8 +61,7 @@ uint8_t zone = 15;
 // ESP-NOW -CONSTANTS
 typedef struct struct_message_received
 {
-    // char a[32]; // TODO:
-    int id; // TODO: define as byte?
+    int id;
     int buttonValue;
     int hopcount;
 } struct_message_received;
@@ -70,16 +69,14 @@ typedef struct struct_message_received
 struct_message_received seeedData;
 
 
-
-
-
-// Last values from Seeed devices (to prevent the LoRa device from sending duplicated data to TTN)
+// Store last values from Seeed devices 
+// (to prevent the LoRa device from sending duplicated data to TTN)
 typedef struct {
     uint8_t id;
     uint8_t lastButtonValue;
 } SeeedDevice;
 
-// Array to store Seeed devices
+// Array to store latest Seeed device data
 // Format: {id, lastButtonValue}
 // 99 is placeholder for inital value
 SeeedDevice seeedDevices[] = {
@@ -111,8 +108,6 @@ bool isSeeedDevicePresent(int id)
     }
     return false;
 }
-
-
 
 
 
@@ -206,7 +201,8 @@ static void app_esp_now_init()
 
 
 // LoRa & TTN - FUNCTIONS
-void sendMessages(void* pvParameter)        // TODO: Not used
+// TODO: Not currently used
+void sendMessages(void* pvParameter)        
 {
     uint8_t* ttnData = (uint8_t*) pvParameter;
     printf("Sending message...\n");
@@ -285,22 +281,16 @@ void vCheckQueueTask(void* pvParameter)     // TODO: Fix name
         xStatus = xQueueReceive( ttnQueue, &data, portMAX_DELAY );
         if( xStatus == pdPASS )
         {
-            /* Data was successfully received from the queue, print out the
-            received value. */
             printf("Received = ");
             for (int i = 0; i < sizeof(data); i++) {
                 printf("%d ", data[i]);
             }
             printf("\r\n");
 
-
-
             
             // Check if the Seeed device is present in the array
-
-            // data[1] = id value sent to the queue
+            // data[1] = device id sent to the queue
             // data[2] = button value send to the queue
-
             if (!isSeeedDevicePresent(data[1])) {
                 // Device not found in the predefined list, ignore the message
                 return;
@@ -323,22 +313,12 @@ void vCheckQueueTask(void* pvParameter)     // TODO: Fix name
 
             // If the button value has changed, send the data to TTN
             if (sendToTTN) {
-
                 ttn_response_code_t res = ttn_transmit_message(data, sizeof(data), 1, false);
                 printf(res == TTN_SUCCESSFUL_TRANSMISSION ? "Message sent.\n" : "Transmission failed.\n");
-            }
-
-
-
-            // xTaskCreate(sendMessages, "send_messages", 1024 * 4, (void* )data, 1, NULL); // TODO: check this more
-
-            
+            }           
         }
         else
         {
-            /* Data was not received from the queue even after waiting for
-            100ms. This must be an error as the sending tasks are free
-            running and will be continuously writing to the queue. */
             printf( "Could not receive from the queue.\r\n" );
         } 
     }
