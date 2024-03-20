@@ -298,9 +298,7 @@ void vCheckQueueTask(void* pvParameter)     // TODO: Fix name
 
             // Check if the button value has changed since the last transmission
             bool sendToTTN = false;
-
             for (int i = 0; i < NUM_SEEED_DEVICES; i++) {
-                // Check if the button value has changed since the last transmission
                 bool isSameId = seeedDevices[i].id == data[1];
                 bool isDifferentButtonValue = seeedDevices[i].lastButtonValue != data[2];
 
