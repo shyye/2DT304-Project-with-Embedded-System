@@ -31,17 +31,12 @@
 <script src="/socket.io/socket.io.js"></script>
 <script>  
 
-const socket = io('http://localhost:3000')    // TODO: Write in better way?
+const socket = io('http://localhost:3000')
   socket.on('mqttMessage', (message) => {
-    // The server sent a message, so refresh the page TODO: Change this
-    // location.reload();
-    console.log("MQTTTTTTTT")
-    console.log(message, markers)
-
     edit(message)
   });
 
-// Stora map markers
+// Store map markers
 let markers = {}
 
 document.addEventListener('DOMContentLoaded', function () {  

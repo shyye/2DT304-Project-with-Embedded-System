@@ -17,10 +17,7 @@ router.get('/', async (req, res) => {
     }
     try {
 
-        // TODO: Search for lifebuoys
-        // https://www.youtube.com/watch?v=esy4nRuShl8&list=PLZlA0Gpn_vH8jbFkBjOuFjhxANC63OmXM&index=7
-        // At 29:13 in the video
-        // and the next video
+        // TODO: Not yet fully implemented
         const lifebuoys = await Lifebuoy.find(filters)
 
         // Convert Zone value to name
@@ -30,7 +27,7 @@ router.get('/', async (req, res) => {
         })
 
     } catch (error) {
-        res.status(500).json({ message: error.message }) //TODO: Kolla upp message
+        res.status(500).json({ message: error.message }) 
     }
 })
 
@@ -55,7 +52,7 @@ router.post('/create', async (req, res) => {
     try {
         const newLifebuoy = await lifebuoy.save()
 
-        // TODO: Do everything herer or above
+        // TODO: Do everything here or above
         // const lifebuoy = await Lifebuoy.create({
         //     deviceId: req.body.deviceId,
         //     zone: req.body.zone,
@@ -90,7 +87,7 @@ router.post('/create', async (req, res) => {
 
 
 // TODO: 
-// Video #5 https://youtu.be/UIf1Lh9OZ-k?si=xF2h25RqaUsT-jbp
+//  Reference Video #5 https://youtu.be/UIf1Lh9OZ-k?si=xF2h25RqaUsT-jbp
 //  Update
 router.get('/:id', (req, res) => {
     res.send(`Show lifebuoy with id: ${req.params.id}`)
