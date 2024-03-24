@@ -1,0 +1,179 @@
+<section id="monitor-wrapper">
+    <section id="title">
+        <h3>Kalmar Kommun</h3>
+        <h2 id="monitor-title">Lifebuoy Monitoring</h2>
+    </section>
+
+    <section id="monitor-content"> 
+        <section id="map"></section>
+
+        <section id="object-list-wrapper">
+            <div id="object-list-filter">
+                <form action="/lifebuoys" method="GET">
+
+                    <label for="sortBy">Sort by</label>
+                    <select name="sortBy" id="sortBy">
+                        <option value="status">Status</option>
+                        <option value="deviceIdAndZone">By device Id and zone</option>    
+                    </select>
+
+                    <!-- TODO: Submit -->
+                    <!-- <button type="submit">Search</button> -->
+                </form>
+            </div>
+            <section id="object-list"></section>
+        </section>
+    </section>
+</section>
+
+<%- include('stats') %>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>  
+
+const socket = io('http://localhost:3000')
+  socket.on('mqttMessage', (message) => {
+    edit(message)
+  });
+
+// Store map markers
+let markers = {}
+
+document.addEventListener('DOMContentLoaded', function () {  
+    // Object List
+    const section = document.getElementById('object-list')
+
+    // Setup Map
+    const KALMAR_latitude = 56.682439564675875;
+    const KALMAR_longitude = 16.343238456776742;
+    var map = L.map('map').setView([KALMAR_latitude, KALMAR_longitude], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map)
+       
+    // Setup Markers to Map, and Corresponding List Elements into Object List
+    <% lifebuoys.forEach(lifebuoy => { %>
+        // Marker
+        var marker = L.marker([<%= lifebuoy.latitude %>, <%= lifebuoy.longitude %>]).addTo(map)
+        markers['<%= lifebuoy.id %>'] = marker
+        var markerContent = `
+        <div>
+            <h3>Lifebuoy# <%= lifebuoy.deviceId %></h3>
+            <ul>
+                <li><strong>Device ID</strong>: <%= lifebuoy.deviceId %></li>
+                <li><strong>Zone</strong>: <%= lifebuoy.zone %></li>
+                <li><strong>Coordinates</strong>: <%= lifebuoy.latitude %>, <%= lifebuoy.longitude %></li>
+                <li><strong>Expiration Date</strong>: <%= lifebuoy.expirationDate %></li>
+                <li><strong>Status</strong>: <%= lifebuoy.status %></li>
+            </ul>
+            <div>
+                <a href="/lifebuoys/<%= lifebuoy.id %>">Show</a>
+                <a href="/lifebuoys/<%= lifebuoy.id %>/edit">Edit</a>
+                <form method="POST" action="/lifebuoys/<%= lifebuoy.id %>?_method=DELETE">
+                    <button type="submit">Delete</button>
+                </form>
+            </div>
+        </div>`
+        marker.bindPopup(markerContent)
+        setMarkerIcon(marker, <%= lifebuoy.status %>)
+        
+        // Corresponding Object List Element TODO: duplicate code, refactor
+        var lifebuoyElementWrapper = document.createElement('div')
+
+        var article = document.createElement('article')
+        article.id ='<%= lifebuoy.id %>'
+        var h2 = document.createElement('h2')
+        var ul = document.createElement('ul')
+        h2.innerHTML = `Lifebuoy #<%= lifebuoy.deviceId %>`
+        ul.innerHTML = `
+            <li><strong>Device ID</strong>: <%= lifebuoy.deviceId %></li>
+            <li><strong>Zone</strong>: <%= lifebuoy.zone %></li>
+            <li><strong>Coordinates</strong>: <%= lifebuoy.latitude %>, <%= lifebuoy.longitude %></li>
+            <li><strong>Expiration Date</strong>: <%= lifebuoy.expirationDate %></li>
+            <li><strong>Status</strong>: <%= lifebuoy.status %></li>
+        `
+        
+        <% if(lifebuoy.status == 0){ %>
+            article.classList.add('object-list-missing-lifebuoy')
+        <% } %>
+                          
+        // TODO:ChatGPT help with closure, is this OK or not?
+        lifebuoyElementWrapper.addEventListener('click', (function(m) {
+            return function() {
+                m.openPopup();
+            };
+        })(marker));
+        article.append(h2,ul)
+        lifebuoyElementWrapper.append(article)
+        section.append(lifebuoyElementWrapper)
+    <% }) %>
+})
+
+
+// TODO: Duplicat code fix
+function edit(lifebuoy) {
+
+    const article = document.getElementById(lifebuoy._id)
+    const marker = markers[lifebuoy._id]
+
+    setMarkerIcon(marker, lifebuoy.status)
+
+    // Marker
+    var markerContent = `
+        <div>
+            <h3>Lifebuoy# ${lifebuoy.deviceId}</h3>
+            <ul>
+                <li><strong>Device ID</strong>: ${lifebuoy.deviceId}</li>
+                <li><strong>Zone</strong>: ${lifebuoy.zone}</li>
+                <li><strong>Coordinates</strong>: ${lifebuoy.latitude}, ${lifebuoy.longitude}</li>
+                <li><strong>Expiration Date</strong>: ${lifebuoy.expirationDate}</li>
+                <li><strong>Status</strong>: ${lifebuoy.status}</li>
+            </ul>
+            <div>
+                <a href="/lifebuoys/${lifebuoy.id}">Show</a>
+                <a href="/lifebuoys/${lifebuoy.id}/edit">Edit</a>
+                <form method="POST" action="/lifebuoys/${lifebuoy.id}?_method=DELETE">
+                    <button type="submit">Delete</button>
+                </form>
+            </div>
+        </div>`
+    marker.setPopupContent(markerContent)
+
+    // Article
+    article.innerHTML = `
+        <h2>Lifebuoy #${lifebuoy.deviceId}</h2>
+        <ul>
+            <li><strong>Device ID</strong>: ${lifebuoy.deviceId}</li>
+            <li><strong>Zone</strong>: ${lifebuoy.zone}</li>
+            <li><strong>Coordinates</strong>: ${lifebuoy.latitude}, ${lifebuoy.longitude}</li>
+            <li><strong>Expiration Date</strong>: ${lifebuoy.expirationDate}</li>
+            <li><strong>Status</strong>: ${lifebuoy.status}</li>
+        </ul>
+        `
+
+    if (lifebuoy.status == 0) {
+        article.classList.add('object-list-missing-lifebuoy');
+    } else {
+        article.classList.remove('object-list-missing-lifebuoy');
+    }   
+}
+
+function setMarkerIcon(marker, status) {
+
+    let iconURL = ''
+
+    if (status == 0) {
+        iconURL = '/img/lifebuoy_icon_v2_missing_withShadow.png'
+    } else {
+        iconURL = '/img/lifebuoy_icon_v2_withShadow.png'
+    }
+
+    let icon = L.icon({
+        iconUrl: iconURL,
+        iconSize: [35, 39]
+    })
+
+    marker.setIcon(icon) 
+}
+
+</script>
