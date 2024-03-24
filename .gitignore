@@ -514,5 +514,10 @@ sdkconfig
 .vscode/
 .devcontainer/
 
+
 # Ignore database/website related files
 .env
+=======
+# Ignore config files
+config.h
+

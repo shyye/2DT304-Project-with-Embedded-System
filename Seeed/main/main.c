@@ -10,27 +10,6 @@
  *
  */
 
-/**
- * TODO:
- * - There is two different devices
- * - The devices are grouped into clusters with for example 10 Seeed devices and 1 LoRa device.
- * - Every cluster has one LoRa device
- * - The devices should be connected with BLE mesh or WiFi and ESP-NOW
- * - The LoRa device also have one button
- * - It will always check if the button is pressed or not
- *
- * - The Seeed devices are connected to one button.
- * - It will always check if the button is pressed or not
- * - If the button is pressed, then the Seeed device sends a message to the LoRa device telling the system
- * that the object (lifbuoy) have been taken from it's place.
- *
- * - As soon as the LoRa device receives the message, it will send a message via LoRa to a database
- * - The LoRa device should be able to recieve multiple messages from different Seeed devices at the same time and also from its' own button
- * - When a button is pressed down again, the LoRa device should recieve a notification and then send a message to the database to tell that the object is back in place
- *
- * - The LoRa device should also be able to send a message to the database one time everyday to tell that it is still alive and that all the Seeed devices are still connected
- */
-
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -56,15 +35,35 @@
 #define BUTTON_PRESSED 1
 #define BUTTON_NOT_PRESSED 0
 
+// *** SET DEVICE ID HERE ***
+// *
+int id = 2;
+int buttonValue = 0;
+// *
+// *******************
+
 // MAC Address of responder - edit as required
 uint8_t broadcastAddress[] = {0x78, 0x21, 0x84, 0x9E, 0xFE, 0xCC};
+uint8_t broadcastAddress1[] = {0xa0, 0x76, 0x4e, 0x40, 0x37, 0xe0};
+uint8_t broadcastAddress2[] = {0xA0, 0x76, 0x4E, 0x45, 0x53, 0xAC};
+uint8_t broadcastAddress3[] = {0xA0, 0x76, 0x4E, 0x44, 0xC9, 0x78};
+
+// Define a data structure for recieved messages
+typedef struct struct_message_received
+{
+    int id;
+    int buttonValue;
+    int hopcount;
+} struct_message_received;
+
+struct_message_received recdata;
 
 // Define a data structure
 typedef struct struct_message
 {
-    char a[32];
     int id;
     int buttonValue;
+    int hopcount;
 } struct_message;
 
 // Create a structured object
@@ -73,20 +72,15 @@ struct_message data;
 // Peer info
 esp_now_peer_info_t peerInfo;
 
-// *** SET ID HERE ***
-// *
-int id = 1;
-static const char* TAG = "MyModule";
-// *
-// *******************
+// Notify task handle
+TaskHandle_t vTaskReceiveDataHandle;
+
+static const char* TAG = "MyModule"; 
 
 // Source: https://github.com/espressif/esp-now/blob/master/examples/get-started/main/app_main.c
-// TODO: Check provisioner vs. responder: https://github.com/espressif/esp-now/blob/master/examples/provisioning/main/app_main.c
-// TODO: Byt namn till wifi_init ?
 static void app_wifi_init()
 {
-    // TODO: Here or in app_main?
-    nvs_flash_init(); // Not in the example above but necessary to prevent errors
+    nvs_flash_init(); // Not included in the example from the source above but necessary to prevent errors
 
     esp_event_loop_create_default();
 
@@ -98,7 +92,6 @@ static void app_wifi_init()
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE)); 
     esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_LR);
-    printf("test");
     esp_wifi_get_protocol(WIFI_IF_STA, &proto);
     ESP_LOGI(TAG, "%d", proto);
 }
@@ -110,23 +103,28 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
     printf(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
 }
 
-// TODO: Change to vTaskFunction
-void sendData()
+// Callback function executed when data is received
+void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
+{
+    // Copy the incoming data to the data structure
+    memcpy(&recdata, incomingData, sizeof(recdata));
+    // printf("Bytes received: %d\n", len);
+
+    // Notify recieve task
+    xTaskNotifyGive(vTaskReceiveDataHandle);
+}
+
+void sendData(int id, int hopcount, int buttonValue)
 {
     data.id = id;
-
-    if (data.buttonValue == BUTTON_PRESSED)
-    {
-        strcpy(data.a, "Lifebuoy is here");     
-    }
-    else
-    {
-        strcpy(data.a, "Lifebuoy is gone!");
-    }
+    data.hopcount = hopcount - 1;
+    data.buttonValue = buttonValue;
 
     // Send message via ESP-NOW
     esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *)&data, sizeof(data));
-
+    esp_err_t result1 = esp_now_send(broadcastAddress1, (uint8_t *)&data, sizeof(data));
+    esp_err_t result2 = esp_now_send(broadcastAddress2, (uint8_t *)&data, sizeof(data));
+    esp_err_t result3 = esp_now_send(broadcastAddress3, (uint8_t *)&data, sizeof(data));
     if (result == ESP_OK)
     {
         printf("Sending confirmed");
@@ -149,23 +147,22 @@ void vTaskReadButtonValue(void *pvParameters)
         int newButtonValue = gpio_get_level(BUTTON_PIN);
 
         // Send data if button vanlue has changed
-        if (newButtonValue != data.buttonValue)
+        if (newButtonValue != buttonValue)
         {
             printf("\nButton value has changed\n");
             // Store new value in data.buttonValue
-            data.buttonValue = newButtonValue;
-
+            buttonValue = newButtonValue;
             // Send data to LoRa device
-            sendData();
+            sendData(id, 4, buttonValue);
         }
 
         // printf("Task Check Button Value is running: %lld\n", esp_timer_get_time() / 1000);
-        // vTaskDelay(1000 / portTICK_PERIOD_MS);
-        vTaskDelay(1); // 1 == 10 ms, to avoid watchdog timer to get triggered, TODO: Check if this is a good idea
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        // vTaskDelay(1); // 1 == 10 ms, to avoid watchdog timer to get triggered, TODO: Check if this is a good idea
     }
 }
 
-// TODO: Change sendData() function to vTask???
+// TODO: 
 void vTaskSendData(void *pvParameters)
 {
     for (;;)
@@ -177,19 +174,34 @@ void vTaskSendData(void *pvParameters)
     vTaskDelete(NULL);
 }
 
+void vTaskReceiveData(void *pvParameters)
+{
+    for (;;)
+    {
+        // Wait for the notification
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        // printf("\nData received: %s\n", recdata.a);
+        printf("ID of the sender: %d\n", recdata.id);
+        printf("Button value: %d\n", recdata.buttonValue);
+        printf("Hops left: %d\n", recdata.hopcount);
+
+        // TODO: Check this structure
+        printf("---> OnDataRecv, sending to queue\n");
+        // Send data to queue
+        if(recdata.hopcount > 0){
+            sendData(recdata.id, recdata.hopcount, recdata.buttonValue);
+        }
+        // sendDataToQueue(&recdata);
+    }
+}
+
 void app_main()
 {
-    // Set up Serial Monitor
-    // Serial.begin(115200);
-    // TODO: Är detta uart config här: https://github.com/espressif/esp-now/blob/master/examples/get-started/main/app_main.c
-
-    // Setup pin to button
-    // pinMode(D10, INPUT);
+    // Pin
     gpio_set_direction(BUTTON_PIN, GPIO_MODE_INPUT);
 
-
-    // Set ESP32 as a Wi-Fi Station
-    // WiFi.mode(WIFI_STA);
+    // WiFi
     app_wifi_init();
 
     // Initilize ESP-NOW
@@ -200,6 +212,7 @@ void app_main()
     }
 
     // Register the send callback
+    esp_now_register_recv_cb(OnDataRecv);
     esp_now_register_send_cb(OnDataSent);
 
     // Register peer
@@ -214,7 +227,41 @@ void app_main()
         return;
     }
 
+    memcpy(peerInfo.peer_addr, broadcastAddress1, 6);
+    peerInfo.channel = 0;
+    peerInfo.encrypt = false;
+
+    // Add peer
+    if (esp_now_add_peer(&peerInfo) != ESP_OK)
+    {
+        printf("Failed to add peer");
+        return;
+    }
+
+    memcpy(peerInfo.peer_addr, broadcastAddress2, 6);
+    peerInfo.channel = 0;
+    peerInfo.encrypt = false;
+
+    // Add peer
+    if (esp_now_add_peer(&peerInfo) != ESP_OK)
+    {
+        printf("Failed to add peer");
+        return;
+    }
+
+    memcpy(peerInfo.peer_addr, broadcastAddress3, 6);
+    peerInfo.channel = 0;
+    peerInfo.encrypt = false;
+
+    // Add peer
+    if (esp_now_add_peer(&peerInfo) != ESP_OK)
+    {
+        printf("Failed to add peer");
+        return;
+    }
+
     // Create tasks
     // Parameter #5 is the priority of the task
-    xTaskCreate(vTaskReadButtonValue, "Check Button Value", 2048, NULL, 1, NULL); 
+    xTaskCreate(vTaskReadButtonValue, "Check Button Value", 2048, NULL, 1, NULL);
+    xTaskCreate(vTaskReceiveData, "Receive Data", 2048, NULL, 1, &vTaskReceiveDataHandle);
 }
