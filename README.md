@@ -21,14 +21,20 @@ Student project about lifebuoy monitoring to ensure that lifebuoys are in the co
 Youtube Video: [2DT304 Project with Embedded System - Lifebuoy Monitoring Prototype](https://youtu.be/HGqFb-Lzu50?si=iPdqgvS2ZUVpU11g)
 
 ## Setup
-TODO: Link to manuals
+Links to manuals for this project.
 
 ### ESP-IDF
-TODO: What is it, why is this used? What Alternatives?
+[setup_expressIDF.md](setup_espressIDF.md)
 
 ### Hardware
-TODO: 
+[setup_hardware.md](setup_hardware.md)
+
+### TTN & LoRa
+[setup_TTN_LoRa.md](setup_TTN_LoRa.md)
+
+### Decode data from TTN, sent via MQTT to the Website
+[setup_decoder_LoRa-TTN-MQTT-Server-Connection.md](setup_decoder_LoRa-TTN-MQTT-Server-Connection.md)
 
 ### Website
-TODO:
+[setup_website.md](setup_website.md)
 
