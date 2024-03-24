@@ -10,27 +10,6 @@
  *
  */
 
-/**
- * TODO:
- * - There is two different devices
- * - The devices are grouped into clusters with for example 10 Seeed devices and 1 LoRa device.
- * - Every cluster has one LoRa device
- * - The devices should be connected with BLE mesh or WiFi and ESP-NOW
- * - The LoRa device also have one button
- * - It will always check if the button is pressed or not
- *
- * - The Seeed devices are connected to one button.
- * - It will always check if the button is pressed or not
- * - If the button is pressed, then the Seeed device sends a message to the LoRa device telling the system
- * that the object (lifbuoy) have been taken from it's place.
- *
- * - As soon as the LoRa device receives the message, it will send a message via LoRa to a database
- * - The LoRa device should be able to recieve multiple messages from different Seeed devices at the same time and also from its' own button
- * - When a button is pressed down again, the LoRa device should recieve a notification and then send a message to the database to tell that the object is back in place
- *
- * - The LoRa device should also be able to send a message to the database one time everyday to tell that it is still alive and that all the Seeed devices are still connected
- */
-
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -56,7 +35,12 @@
 #define BUTTON_PRESSED 1
 #define BUTTON_NOT_PRESSED 0
 
-int id = 3;
+// *** SET DEVICE ID HERE ***
+// *
+int id = 2;
+int buttonValue = 0;
+// *
+// *******************
 
 // MAC Address of responder - edit as required
 uint8_t broadcastAddress[] = {0x78, 0x21, 0x84, 0x9E, 0xFE, 0xCC};
@@ -67,18 +51,16 @@ uint8_t broadcastAddress3[] = {0xA0, 0x76, 0x4E, 0x44, 0xC9, 0x78};
 // Define a data structure for recieved messages
 typedef struct struct_message_received
 {
-    char a[32];
     int id;
     int buttonValue;
     int hopcount;
-} struct_message_received ;
+} struct_message_received;
 
 struct_message_received recdata;
 
 // Define a data structure
 typedef struct struct_message
 {
-    char a[32];
     int id;
     int buttonValue;
     int hopcount;
@@ -90,25 +72,15 @@ struct_message data;
 // Peer info
 esp_now_peer_info_t peerInfo;
 
-// Queue handle
-QueueHandle_t dataQueue;
-
 // Notify task handle
 TaskHandle_t vTaskReceiveDataHandle;
 
-// *** SET ID HERE ***
-// *
-static const char* TAG = "MyModule";
-// *
-// *******************
+static const char* TAG = "MyModule"; 
 
 // Source: https://github.com/espressif/esp-now/blob/master/examples/get-started/main/app_main.c
-// TODO: Check provisioner vs. responder: https://github.com/espressif/esp-now/blob/master/examples/provisioning/main/app_main.c
-// TODO: Byt namn till wifi_init ?
 static void app_wifi_init()
 {
-    // TODO: Here or in app_main?
-    nvs_flash_init(); // Not in the example above but necessary to prevent errors
+    nvs_flash_init(); // Not included in the example from the source above but necessary to prevent errors
 
     esp_event_loop_create_default();
 
@@ -139,31 +111,21 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
     // printf("Bytes received: %d\n", len);
 
     // Notify recieve task
-    xTaskNotifyGive(vTaskReceiveDataHandle); // TODO: Check if this is correct (vTaskReceiveDataHandle
-
+    xTaskNotifyGive(vTaskReceiveDataHandle);
 }
 
-// TODO: Change to vTaskFunction
 void sendData(int id, int hopcount, int buttonValue)
 {
     data.id = id;
-
     data.hopcount = hopcount - 1;
-    if (buttonValue == BUTTON_PRESSED)
-    {
-        strcpy(data.a, "Lifebuoy is here");     
-    }
-    else
-    {
-        strcpy(data.a, "Lifebuoy is gone!");
-    }
+    data.buttonValue = buttonValue;
 
     // Send message via ESP-NOW
     esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *)&data, sizeof(data));
     esp_err_t result1 = esp_now_send(broadcastAddress1, (uint8_t *)&data, sizeof(data));
     esp_err_t result2 = esp_now_send(broadcastAddress2, (uint8_t *)&data, sizeof(data));
     esp_err_t result3 = esp_now_send(broadcastAddress3, (uint8_t *)&data, sizeof(data));
-    if (result1 == ESP_OK)
+    if (result == ESP_OK)
     {
         printf("Sending confirmed");
     }
@@ -171,12 +133,6 @@ void sendData(int id, int hopcount, int buttonValue)
     {
         printf("Sending error");
     }
-}
-
-void sendDataToQueue(void *data)
-{
-    // Send data to queue
-    xQueueSendToBack(dataQueue, &data, 0);
 }
 
 /**
@@ -191,23 +147,22 @@ void vTaskReadButtonValue(void *pvParameters)
         int newButtonValue = gpio_get_level(BUTTON_PIN);
 
         // Send data if button vanlue has changed
-        if (newButtonValue != data.buttonValue)
+        if (newButtonValue != buttonValue)
         {
             printf("\nButton value has changed\n");
             // Store new value in data.buttonValue
-            data.buttonValue = newButtonValue;
-
+            buttonValue = newButtonValue;
             // Send data to LoRa device
-            sendData(id, 3, data.buttonValue);
+            sendData(id, 4, buttonValue);
         }
 
         // printf("Task Check Button Value is running: %lld\n", esp_timer_get_time() / 1000);
-        // vTaskDelay(1000 / portTICK_PERIOD_MS);
-        vTaskDelay(1); // 1 == 10 ms, to avoid watchdog timer to get triggered, TODO: Check if this is a good idea
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        // vTaskDelay(1); // 1 == 10 ms, to avoid watchdog timer to get triggered, TODO: Check if this is a good idea
     }
 }
 
-// TODO: Change sendData() function to vTask???
+// TODO: 
 void vTaskSendData(void *pvParameters)
 {
     for (;;)
@@ -226,7 +181,7 @@ void vTaskReceiveData(void *pvParameters)
         // Wait for the notification
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        printf("\nData received: %s\n", recdata.a);
+        // printf("\nData received: %s\n", recdata.a);
         printf("ID of the sender: %d\n", recdata.id);
         printf("Button value: %d\n", recdata.buttonValue);
         printf("Hops left: %d\n", recdata.hopcount);
@@ -237,25 +192,16 @@ void vTaskReceiveData(void *pvParameters)
         if(recdata.hopcount > 0){
             sendData(recdata.id, recdata.hopcount, recdata.buttonValue);
         }
-        sendDataToQueue(&recdata);
+        // sendDataToQueue(&recdata);
     }
 }
 
 void app_main()
 {
-    // Set up Serial Monitor
-    // Serial.begin(115200);
-    // TODO: Är detta uart config här: https://github.com/espressif/esp-now/blob/master/examples/get-started/main/app_main.c
-
-    dataQueue = xQueueCreate(10, sizeof(struct_message_received)); // TODO: Check if struct_message is standard or can be whatever we created aboive
-
-    // Setup pin to button
-    // pinMode(D10, INPUT);
+    // Pin
     gpio_set_direction(BUTTON_PIN, GPIO_MODE_INPUT);
 
-
-    // Set ESP32 as a Wi-Fi Station
-    // WiFi.mode(WIFI_STA);
+    // WiFi
     app_wifi_init();
 
     // Initilize ESP-NOW
@@ -317,5 +263,5 @@ void app_main()
     // Create tasks
     // Parameter #5 is the priority of the task
     xTaskCreate(vTaskReadButtonValue, "Check Button Value", 2048, NULL, 1, NULL);
-    xTaskCreate(vTaskReceiveData, "Receive Data", 2048, NULL, 1, &vTaskReceiveDataHandle); // TODO: Check if this is correct (vTaskReceiveDataHandle) 
+    xTaskCreate(vTaskReceiveData, "Receive Data", 2048, NULL, 1, &vTaskReceiveDataHandle);
 }

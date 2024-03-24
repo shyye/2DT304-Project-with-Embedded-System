@@ -513,3 +513,6 @@ build/
 sdkconfig
 .vscode/
 .devcontainer/
+
+# Ignore config files
+config.h
