@@ -46,7 +46,7 @@ void loop() {
 3. Chooose UART
 
 
-## Heltec
+## Heltec WiFi LoRa 32 (V2)
 ### Change settings with VSCode Extension for ESP-IDF
 1. Choose ESP32
 2. Choose COM PORT
