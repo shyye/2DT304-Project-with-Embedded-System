@@ -162,7 +162,7 @@ void vTaskReadButtonValue(void *pvParameters)
     }
 }
 
-// TODO: Is this used
+// TODO: 
 void vTaskSendData(void *pvParameters)
 {
     for (;;)
