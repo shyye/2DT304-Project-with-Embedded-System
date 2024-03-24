@@ -16,7 +16,7 @@
  * https://aliafshar.medium.com/esp-idf-for-arduino-users-tutorials-part-3-app-setup-and-loop-9086726627
  *
  *
- * TTN
+ * TTN Library used
  * *******************************************************************************
  * https://github.com/manuelbl/ttn-esp32
  * https://github.com/manuelbl/ttn-esp32/wiki/Get-Started
@@ -28,7 +28,6 @@
  * Licensed under MIT License
  * https://opensource.org/licenses/MIT
  *
- * Sample program for C showing how to send and receive messages.
  ******************************************************************************/
 
 #include <stdio.h>
@@ -112,7 +111,6 @@ bool isSeeedDevicePresent(int id)
 
 
 // LoRa & TTN - CONSTANTS
-// NOTE: TODO:
 // The LoRaWAN frequency and the radio chip must be configured by running 'idf.py menuconfig'.
 // Go to Components / The Things Network, select the appropriate values and save.
 
@@ -268,8 +266,6 @@ static void app_lora_ttn_init() {
         printf("Join failed. Goodbye\n");
     }
 }
-
-
 
 
 void vCheckQueueTask(void* pvParameter)     // TODO: Fix name
