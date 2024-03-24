@@ -18,7 +18,7 @@ Student project about lifebuoy monitoring to ensure that lifebuoys are in the co
 - Simple website with Node.js, Express, MongoDB, Leaflet.
 
 ## Screenshots & Demo(Video)
-TODO: Demo of project
+Youtube Video: [2DT304 Project with Embedded System - Lifebuoy Monitoring Prototype](https://youtu.be/HGqFb-Lzu50?si=iPdqgvS2ZUVpU11g)
 
 ## Setup
 TODO: Link to manuals
