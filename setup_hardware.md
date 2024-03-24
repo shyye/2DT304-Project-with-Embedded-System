@@ -45,11 +45,14 @@ void loop() {
 2. Choose COM PORT
 3. Chooose UART
 
-### Troubleshooting
-If the device doesn't want to connect.  
-Try to press the left button while connecting the USB.
 
 ## Heltec
+### Change settings with VSCode Extension for ESP-IDF
+1. Choose ESP32
+2. Choose COM PORT
+3. Choose UART
+
+Config file:  
 You need to create a file called config.h  
 It should be placed in the main folder and contain the following identification and keys from TTN:
 ```
