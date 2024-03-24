@@ -50,9 +50,8 @@ If the device doesn't want to connect.
 Try to press the left button while connecting the USB.
 
 ## Heltec
-1. config.h should be in the main folder and contain:
-This file is ignored in in the GitHub setup as it includes secret keys.
-
+You need to create a file called config.h  
+It should be placed in the main folder and contain the following identification and keys from TTN:
 ```
 #define APP_EUI "????????????????"
 #define DEV_EUI "?????????????????"
